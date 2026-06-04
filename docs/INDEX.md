@@ -1,71 +1,52 @@
-# 文档中心
+# 文档中心 — CS 饰品分析
 
-这里是项目文档入口。README 负责项目概览和快速开始；更完整的配置、部署、功能说明和排障内容从这里进入。
+本仓库以 **CS2 饰品投资分析** 为主。README 提供概览与快速开始；详细配置、Web 使用与排障从下文进入。
+
+> 仓库中仍保留部分上游「股票分析」文档（如 `full-guide.md`、`TUSHARE_STOCK_LIST_GUIDE.md`），仅供 `/stocks` 等遗留路由参考，**新用户请优先阅读 CS 专题文档**。
 
 ## 按场景选择
 
 | 我想要 | 先看 | 继续看 |
 | --- | --- | --- |
-| 快速了解项目能做什么 | [README](../README.md) | [完整配置与部署指南](full-guide.md) |
-| 第一次把项目跑起来 | [小白客户端安装与配置](beginner-client-setup.md) | [完整配置与部署指南](full-guide.md) |
-| 配置大模型渠道 | [LLM 配置指南](LLM_CONFIG_GUIDE.md) | [LLM 服务商配置指南](llm-providers.md) |
-| 配置推送通知 | [通知能力基线](notifications.md) | [完整配置与部署指南](full-guide.md) |
-| 部署到服务器或云平台 | [部署指南](DEPLOY.md) | [云端 WebUI 部署](deploy-webui-cloud.md)、[Zeabur 部署](docker/zeabur-deployment.md) |
-| 使用 Bot / IM 接入 | [Bot 命令与接入](bot-command.md) | [Bot 平台配置](bot/) |
-| 排查运行问题 | [FAQ](FAQ.md) | [更新日志](CHANGELOG.md) |
-| 参与开发或提交 PR | [贡献指南](CONTRIBUTING.md) | [API 规格](architecture/api_spec.json) |
+| 快速了解能做什么 | [README](../README.md) | [CS 使用与配置指南](cs-guide.md) |
+| 第一次跑通 Web 分析 | [CS 使用指南 · 快速开始](cs-guide.md#快速开始) | [CS 分析技术说明](cs-item-analysis.md) |
+| 理解数据从哪来 | [CS 分析技术说明](cs-item-analysis.md) | [爬虫说明](../crawlers/README.md)、[CSQAQ 成交量导出](csqaq-volume-crawler.md) |
+| 配置大模型 | [LLM 配置指南](LLM_CONFIG_GUIDE.md) | [LLM 服务商配置](llm-providers.md) |
+| 配置推送通知 | [通知能力基线](notifications.md) | [部署指南](DEPLOY.md) |
+| 部署到服务器 | [部署指南](DEPLOY.md) | [云端 WebUI](deploy-webui-cloud.md) |
+| 排查分析问题 | [FAQ](FAQ.md) | [更新日志](CHANGELOG.md) |
+| 参与开发 | [贡献指南](CONTRIBUTING.md) | 根目录 [AGENTS.md](../AGENTS.md) |
 
-## 快速开始
-
-| 文档 | 内容 |
-| --- | --- |
-| [README](../README.md) | 项目定位、核心能力、快速开始、推送效果 |
-| [小白客户端安装与配置](beginner-client-setup.md) | 面向不会代码用户的客户端下载、Anspire Open / AIHubMix 模型配置、新闻源配置和常见问题 |
-| [完整配置与部署指南](full-guide.md) | 环境准备、运行方式、配置说明、部署路径和常见问题 |
-| [FAQ](FAQ.md) | 常见配置、模型、通知、部署和运行问题 |
-| [更新日志](CHANGELOG.md) | 版本变化、能力调整和迁移说明 |
-
-## 配置
+## CS 专题（推荐）
 
 | 文档 | 内容 |
 | --- | --- |
-| [LLM 配置指南](LLM_CONFIG_GUIDE.md) | 大模型渠道、三层配置、Web 设置页和常见模型配置 |
-| [LLM 服务商配置指南](llm-providers.md) | Provider 预设、Actions 映射、错误分类和诊断建议 |
-| [LiteLLM YAML 示例](examples/litellm_config.example.yaml) | LiteLLM 多渠道配置示例 |
-| [通知能力基线](notifications.md) | 企业微信、飞书、Telegram、Discord、Slack、邮件等通知渠道配置 |
-| [Tushare 股票列表指南](TUSHARE_STOCK_LIST_GUIDE.md) | Tushare 股票列表相关配置和使用说明 |
+| [CS 使用与配置指南](cs-guide.md) | 环境变量、Web 工作台、CLI、API、排障 |
+| [CS 分析技术说明](cs-item-analysis.md) | 数据融合、Skill 介入点、事件情报、API 契约 |
+| [HLTV 爬虫](hltv-crawler.md) | 赛事 / 舆论数据源 |
+| [CSQAQ 成交量导出](csqaq-volume-crawler.md) | 批量导出成交量 CSV |
+| [Web UI 说明](ui-v2-preview.md) | 首页组件结构与路由（工作台已合入 `/`） |
 
-## 使用专题
-
-| 文档 | 内容 |
-| --- | --- |
-| [Bot 命令与接入](bot-command.md) | Bot 命令、Webhook、平台接入和回调说明 |
-| [Bot 平台配置](bot/) | 飞书、钉钉、Discord 等 Bot 配置截图和补充说明 |
-| [实时告警中心](alerts.md) | EventMonitor 基线、Web 规则管理、通知结果、冷却状态和 Phase 边界 |
-| [分析上下文包 P0/P1 契约](analysis-context-pack.md) | AnalysisContextPack 首版范围、上下文字段边界、字段质量状态、P1 内部 schema 和源码锚点 |
-| [图片识别 Prompt](image-extract-prompt.md) | 图片识别股票信息的 Prompt 与使用边界 |
-| [OpenClaw Skill 集成](openclaw-skill-integration.md) | OpenClaw / Skill 外部集成说明 |
-
-## 部署与打包
+## 通用能力（与饰品共用）
 
 | 文档 | 内容 |
 | --- | --- |
-| [部署指南](DEPLOY.md) | 服务器部署、Docker、systemd、Supervisor 等部署方式 |
-| [云端 WebUI 部署](deploy-webui-cloud.md) | 云服务器访问 WebUI 的部署说明 |
-| [Zeabur 部署](docker/zeabur-deployment.md) | Zeabur 平台部署说明 |
-| [桌面端打包说明](desktop-package.md) | Electron 桌面端和 Web 构建产物打包说明 |
+| [LLM 配置指南](LLM_CONFIG_GUIDE.md) | 模型渠道与 Web 设置页 |
+| [通知能力基线](notifications.md) | 企业微信、飞书、Telegram 等 |
+| [Bot 命令与接入](bot-command.md) | IM Bot（若启用） |
+| [部署指南](DEPLOY.md) | Docker、云服务器 |
+| [桌面端打包](desktop-package.md) | Electron 客户端 |
+| [OpenClaw Skill 集成](openclaw-skill-integration.md) | 外部 Skill 集成 |
 
-## 参考与开发
+## 遗留 / 股票相关（可选）
 
-| 文档 | 内容 |
+| 文档 | 说明 |
 | --- | --- |
-| [API 规格](architecture/api_spec.json) | FastAPI OpenAPI 规格产物 |
-| [贡献指南](CONTRIBUTING.md) | Issue、PR、测试、文档同步和协作要求 |
+| [完整配置与部署指南](full-guide.md) | 上游股票项目长文档 |
+| [Tushare 股票列表指南](TUSHARE_STOCK_LIST_GUIDE.md) | 仅 `/stocks` 使用 |
+| [图片识别 Prompt](image-extract-prompt.md) | 股票截图导入 |
+| [分析上下文包](analysis-context-pack.md) | 股票 AnalysisContextPack |
 
 ## 多语言
 
-| 文档 | 内容 |
-| --- | --- |
-| [英文文档索引](INDEX_EN.md) | English documentation index |
-| [英文 README](README_EN.md) | English project overview and quick start |
-| [繁中 README](README_CHT.md) | 繁體中文項目概覽與快速開始 |
+上游项目提供 [英文索引](INDEX_EN.md)、[英文 README](README_EN.md) 等，内容仍以股票为主；CS 中文文档以本页所列为准。

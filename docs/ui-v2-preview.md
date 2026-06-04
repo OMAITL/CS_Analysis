@@ -1,60 +1,43 @@
-# 饰品投资助手 UI（v2）
+# Web 工作台 UI 说明
 
-CS 首页 `/` 已采用 Agent 工作台布局（左任务 / 右报告）。组件位于 `apps/dsa-web/src/components/v2/cs/`。
+饰品分析首页已采用 **Agent 工作台** 布局（非预览专用，已合入 `/`）。
 
-## 访问入口
+## 路由
 
-| 路径 | 页面 | 说明 |
-| --- | --- | --- |
-| `/` | `HomePage` | 饰品 Agent 工作台（正式首页） |
-| `/preview` | — | 重定向至 `/` |
-| `/preview/chat` | `ChatPageV2` | 问股 UI 预览（ChatGPT 风格） |
+| 路径 | 页面 |
+| --- | --- |
+| `/` | 饰品 Agent 工作台（`HomePage` + `IaAgentWorkbench`） |
+| `/preview` | 重定向至 `/` |
+| `/preview/chat` | 问股 UI 预览 |
+| `/chat` | 问股（原版） |
+| `/stocks` | 股票分析（遗留） |
 
-本地开发示例（端口以 `.env` 中 `VITE_DEV_PORT` 为准）：
+## 布局
 
-```text
-http://localhost:5176/
-http://localhost:5176/preview/chat
-```
+- **左侧** `IaTaskSidebar`：发起分析任务、预设饰品卡片  
+- **右侧** `IaReportPanel` / `IaReportPlaceholder`：报告或空状态  
+- **历史** `IaHistoryDrawer`：默认折叠，卡片式本地历史  
 
-## 目录结构
+## 报告组件（右侧自上而下）
+
+| 组件 | 层级 |
+| --- | --- |
+| `IaDecisionHero` | 决策：评分、建议、风险、趋势 |
+| `IaScoreBreakdown` + `IaSentimentSection` | 依据与情绪 |
+| `IaActionZones` | 买入 / 止盈 / 止损 |
+| `IaPlatformArbitrage` | 多平台价差 |
+| `IaNewsBriefs` | 资讯简讯 |
+| `IaAiReport` | AI 总结 + 折叠完整 Markdown |
+
+样式作用域：`.ia-v2-root`（`apps/dsa-web/src/styles/ia-v2.css`）。
+
+## 代码位置
 
 ```text
 apps/dsa-web/src/
-  pages/v2/
-    HomePageV2.tsx      # 预览首页编排
-    ChatPageV2.tsx      # 预览问股
-  components/v2/cs/     # 饰品分析 UI 组件
-    IaLandingHero.tsx
-    IaHistoryDrawer.tsx
-    IaReportView.tsx    # 结果页组合（决策→原因→操作→资讯→报告）
-    ...
-  styles/ia-v2.css      # 预览专用样式（.ia-v2-root 作用域）
+  pages/HomePage.tsx
+  components/v2/cs/
+  hooks/useCsHomeState.ts
 ```
 
-## 设计对照
-
-| 需求 | 预览实现 |
-| --- | --- |
-| 左右分栏工作台 | 左 `IaTaskSidebar`（任务下发）· 右 `IaReportPanel` / 空状态占位 |
-| 历史栏默认折叠 | `IaHistoryDrawer`，`historyOpen` 初始 `false` |
-| 历史卡片化 | 评分 / 建议 / 日期 + 悬停删除 |
-| 结果分层 | `IaDecisionHero` → `IaScoreBreakdown` / `IaSentimentSection` → `IaActionZones` → `IaPlatformArbitrage` → `IaNewsBriefs` → `IaAiReport` |
-| 情绪条 | `IaSentimentBar` |
-| 平台价差 | `IaPlatformArbitrage` |
-| 资讯简讯 | `IaNewsBriefs` |
-| 报告去内部字段 | `IaAiReport` + `stripInternalReportFields` |
-| 问股简化 | `ChatPageV2` 居中输入 + 推荐问题 + `details` 高级策略 |
-
-## 状态与逻辑复用
-
-- 分析流程：`useCsHomeState`（与正式 `HomePage` 相同 hook、同一 `localStorage` 历史键）
-- 问股流：`useAgentChatStore.startStream`（与正式 `ChatPage` 相同会话存储）
-- 搜索联想：`CsItemSearchInput` + `csApi.searchItems`
-
-## 合入状态
-
-- 首页 `/` 已使用 v2 工作台（`pages/HomePage.tsx` → `IaAgentWorkbench`）。
-- 问股 `/chat` 仍为原版；`/preview/chat` 为问股 v2 预览。
-
-回滚首页：恢复 `pages/HomePage.tsx` 旧实现并改回 `App.tsx` 路由即可。
+业务逻辑与 API 未因 UI 改版而变更；详见 [cs-item-analysis.md](cs-item-analysis.md)。

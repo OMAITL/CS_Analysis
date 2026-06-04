@@ -1,5 +1,7 @@
 # Tushare 股票列表获取工具使用说明
 
+> **遗留文档**：仅股票模块（`/stocks`、自选股列表）使用。CS 饰品分析见 [cs-guide.md](cs-guide.md)。
+
 ## 功能概述
 
 从 Tushare Pro 获取 A股、港股、美股列表信息，保存为 CSV 文件到本地。

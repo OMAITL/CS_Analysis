@@ -1,6 +1,8 @@
-# CS 单品分析（Phase 2）
+# CS 单品分析 — 技术说明
 
-Phase 2 在 Phase 1（CSQAQ API + 爬虫）基础上，将 **开放 API 价格序列** 与 **Playwright K 线 OHLCV** 融合为分析级日 K，并接入 `StockTrendAnalyzer`。
+> 用户向操作说明见 [CS 使用与配置指南](cs-guide.md)；文档索引见 [INDEX.md](INDEX.md)。
+
+在 Phase 1（CSQAQ API + 爬虫）基础上，将 **开放 API 价格序列** 与 **Playwright K 线 OHLCV** 融合为分析级日 K，并接入 `StockTrendAnalyzer`（技术指标与信号逻辑与股票模块复用）。
 
 ## 数据流
 
@@ -117,35 +119,41 @@ venv\Scripts\python.exe tools/probe_cs_event_intel.py --good-id 769
 venv\Scripts\python.exe tools/probe_cs_event_intel.py --good-id 769 -v   # 含被过滤条目
 ```
 
-## Web 前端查看（Phase 2.3+）
+## Web 前端（Agent 工作台）
 
-1. 启动后端 API：
+路由 **`/`** 为饰品分析首页（左任务 / 右报告）。`/cs` 重定向至 `/`；股票分析在 `/stocks`。
+
+### 启动
 
 ```bash
 uvicorn server:app --reload --host 0.0.0.0 --port 8000
+cd apps/dsa-web && npm ci && npm run dev
 ```
 
-2. 启动前端：
+端口以 `.env` 中 `WEBUI_PORT`、`VITE_DEV_PORT` 为准。
 
-```bash
-cd apps/dsa-web
-npm ci
-npm run dev
-```
+### 交互要点
 
-3. 浏览器打开侧边栏 **「首页」**（`/`），输入饰品名、刀型或皮肤名，**从下拉列表选择具体款式**（含磨损），或输入 `good_id` 后点击 **分析**。原独立页 `/cs` 会重定向到首页；股票分析在 **「股票分析」**（`/stocks`）。
+- 搜索：名称 / 皮肤 / `good_id`；多结果须从下拉选定（[CSQAQ get_good_id](https://docs.csqaq.com/api-187131777)）
+- 分析：请求体建议带 `good_id`；可选 `platform`、`skills`、`refresh_crawl`
+- 报告：`report` 结构化字段 + `report_markdown`；UI 组件见 `apps/dsa-web/src/components/v2/cs/`
 
-模糊名称（如「蝴蝶刀」「机械工业」）会匹配多个 `good_id`，与 [CSQAQ 获取饰品 ID](https://docs.csqaq.com/api-187131777) 行为一致，必须先选定一条再分析。
+### API
 
-页面展示：仪表盘模块（核心洞察、策略点位、运行诊断、资讯等）、技术面摘要；完整 Markdown 报告默认折叠。
+| 方法 | 路径 |
+| --- | --- |
+| GET | `/api/v1/cs/items/search` |
+| POST | `/api/v1/cs/items/analyze` |
+| GET | `/api/v1/cs/items/skills` |
 
-API：
+Schema：`api/v1/schemas/cs.py`。服务实现：`src/services/cs_item_service.py`、`src/services/cs_analysis_report.py`。
 
-- `GET /api/v1/cs/items/search?search=蝴蝶刀&page_size=20` — 模糊搜索 `good_id`（代理 CSQAQ `get_good_id`）
-- `POST /api/v1/cs/items/analyze` — 分析（请求体见 `api/v1/schemas/cs.py`）；建议传 `good_id`，仅当名称唯一时再传 `item` 文本
+### Skill 介入点
 
-**技能介入点（与股票一致）**：在 `GeminiAnalyzer.analyze()` 生成 JSON 决策仪表盘时，将 CS 白名单 skill 写入 **system prompt**（非仅 Markdown `generate_text`）。LLM 返回 JSON 后由 `src/services/cs_analysis_report.py` 渲染为页面所需的 Markdown 章节。
+在 `GeminiAnalyzer.analyze()` 生成 JSON 决策仪表盘时注入 CS 白名单 skill（**system prompt**），再由 `build_cs_report_payload` / 渲染逻辑输出 Web 与 Markdown。
 
-**CS 可复用技能（13 个）**：7 个纯技术 skill 复用 `strategies/*.yaml`；6 个 CS 适配版在 `strategies/cs/`（事件驱动、热点题材、情绪周期、相对强势、缠论、波浪理论）。默认 `bull_trend`。
+**13 个 Skill**：7 个通用 `strategies/*.yaml` + 6 个 CS 适配 `strategies/cs/`。默认 `bull_trend`。
 
-**排障：** 若 Web 仅显示 `Internal Server Error`，请先确认后端已启动（端口见根目录 `.env` 的 `WEBUI_PORT`，默认 `uvicorn server:app --port 8000`），前端 `npm run dev` 会从同一 `.env` 读取 `VITE_DEV_PORT`（默认 5173）并代理到 API。
+### 排障
+
+见 [FAQ.md](FAQ.md) 与 [cs-guide.md](cs-guide.md#排障)。

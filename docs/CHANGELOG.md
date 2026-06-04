@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [文档] 重写 README、文档中心、CS 使用指南、FAQ、部署指南；股票长文档标注为遗留，默认文档路径改为 CS 饰品分析。
 - [改进] CS 首页正式替换为 Agent 工作台 UI（左任务下发 / 右分析报告）；`/preview` 重定向至 `/`；组件见 `components/v2/cs/`。
 - [改进] 饰品助手 v2 预览改为左右分栏：左侧任务下发、右侧分析报告；移除流水线动画；空报告区展示示例与最近分析。
 - [改进] 饰品助手 v2 预览首页改为 Agent 工作台：左侧流水线/数据源/Skill，右侧任务下发；与问股聊天式预览区分。
