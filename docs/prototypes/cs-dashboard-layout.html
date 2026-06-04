@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CS 饰品分析 — 布局原型</title>
+  <style>
+    :root {
+      --bg: #0c1018;
+      --elevated: #141b26;
+      --border: rgba(255, 255, 255, 0.08);
+      --text: #e8edf5;
+      --muted: #8b95a8;
+      --accent: #e8a54b;
+      --accent-dim: rgba(232, 165, 75, 0.15);
+      --cyan: #2dcae6;
+      --success: #3ecf8e;
+      --warning: #f0b429;
+      --danger: #f07178;
+      --radius: 12px;
+      --font: "Segoe UI", system-ui, sans-serif;
+      --mono: "Cascadia Mono", "Consolas", monospace;
+    }
+    * { box-sizing: border-box; margin: 0; }
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    h1 { font-size: 1.35rem; font-weight: 600; margin-bottom: 6px; }
+    .subtitle { color: var(--muted); font-size: 0.875rem; margin-bottom: 16px; max-width: 720px; line-height: 1.5; }
+    .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    .tab {
+      padding: 8px 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+      font-size: 0.8125rem;
+    }
+    .tab.active {
+      background: var(--accent-dim);
+      border-color: rgba(232, 165, 75, 0.45);
+      color: var(--accent);
+    }
+    .frame {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--elevated);
+      max-width: 1280px;
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 14px;
+      border-bottom: 1px solid var(--border);
+      background: #111822;
+    }
+    .search {
+      flex: 1;
+      height: 36px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 0 12px;
+      font-size: 0.8125rem;
+    }
+    .btn {
+      height: 36px;
+      padding: 0 16px;
+      border-radius: 10px;
+      border: none;
+      background: var(--accent);
+      color: #1a1208;
+      font-weight: 600;
+      font-size: 0.8125rem;
+      cursor: pointer;
+    }
+    .chip {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      border: 1px solid var(--border);
+      color: var(--muted);
+    }
+    .body { display: flex; min-height: 560px; }
+    .history {
+      width: 220px;
+      flex-shrink: 0;
+      border-right: 1px solid var(--border);
+      padding: 12px;
+    }
+    .history h2 { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+    .hist-item {
+      padding: 10px;
+      border-radius: 10px;
+      margin-bottom: 8px;
+      border: 1px solid transparent;
+      cursor: pointer;
+    }
+    .hist-item.active {
+      border-color: rgba(232, 165, 75, 0.5);
+      background: var(--accent-dim);
+    }
+    .hist-name { font-size: 0.8125rem; font-weight: 500; line-height: 1.35; }
+    .hist-meta { font-size: 0.6875rem; color: var(--muted); margin-top: 6px; display: flex; gap: 6px; align-items: center; }
+    .score { margin-left: auto; font-weight: 700; color: var(--warning); }
+    .main { flex: 1; min-width: 0; overflow: auto; }
+    .hero { padding: 16px 18px 0; }
+    .hero-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
+    .title { font-size: 1.125rem; font-weight: 600; }
+    .price-row { display: flex; align-items: baseline; gap: 10px; margin-top: 6px; flex-wrap: wrap; }
+    .price { font-family: var(--mono); font-size: 1.5rem; font-weight: 700; }
+    .up { color: var(--success); font-size: 0.875rem; }
+    .insight {
+      margin-top: 14px;
+      padding: 14px;
+      border-radius: 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+    }
+    .label { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .insight p { margin-top: 8px; font-size: 0.9375rem; line-height: 1.55; max-width: 62ch; }
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      padding: 14px 18px;
+    }
+    .stat {
+      padding: 12px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .stat-val { font-size: 1.125rem; font-weight: 600; margin-top: 4px; }
+    .stat-lbl { font-size: 0.6875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .row2 {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 10px;
+      padding: 0 18px 14px;
+    }
+    .panel {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--bg);
+    }
+    .panel h3 { font-size: 0.6875rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+    .pills { display: flex; flex-wrap: wrap; gap: 8px; }
+    .pill {
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      background: rgba(45, 202, 230, 0.12);
+      border: 1px solid rgba(45, 202, 230, 0.25);
+      font-family: var(--mono);
+    }
+    .strategy {
+      padding: 0 18px 14px;
+    }
+    .strategy h3 { font-size: 0.8125rem; margin-bottom: 10px; color: var(--muted); }
+    .str-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+    }
+    .str-card {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      background: var(--bg);
+    }
+    .str-card.stop { border-color: rgba(240, 113, 120, 0.35); }
+    .str-card.take { border-color: rgba(232, 165, 75, 0.35); }
+    .str-lbl { font-size: 0.6875rem; color: var(--muted); }
+    .str-val { font-family: var(--mono); font-size: 1.125rem; font-weight: 700; margin: 4px 0; }
+    .str-note { font-size: 0.6875rem; color: var(--muted); }
+    .bottom {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      padding: 0 18px 18px;
+    }
+    .news-item { padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 0.8125rem; }
+    .news-item:last-child { border: none; }
+    .hidden { display: none !important; }
+    .current-narrow { max-width: 520px; margin: 0 auto; }
+    .empty-side {
+      margin: 12px 18px 18px;
+      padding: 24px;
+      border: 1px dashed var(--border);
+      border-radius: 10px;
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.8125rem;
+    }
+    .note-box {
+      margin-top: 20px;
+      max-width: 1280px;
+      padding: 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      font-size: 0.8125rem;
+      color: var(--muted);
+      line-height: 1.6;
+    }
+    @media (max-width: 900px) {
+      .body { flex-direction: column; }
+      .history { width: 100%; border-right: none; border-bottom: 1px solid var(--border); }
+      .str-grid { grid-template-columns: repeat(2, 1fr); }
+      .stats, .row2, .bottom { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <h1>CS 饰品分析 — 布局原型（方案 A）</h1>
+  <p class="subtitle">在浏览器中直接预览排版。功能逻辑不变：搜索联想、分析 API、报告模块均保持现状，仅调整宽度、模块顺序与 CS 向文案。</p>
+
+  <div class="tabs" role="tablist">
+    <button type="button" class="tab active" data-scheme="proposed">方案 A 工作台（推荐）</button>
+    <button type="button" class="tab" data-scheme="current">当前版本</button>
+    <button type="button" class="tab" data-scheme="tabs">方案 B Tab</button>
+  </div>
+
+  <div class="frame" id="frame-proposed">
+    <div class="topbar">
+      <input class="search" value="蝴蝶刀（★） | 北方森林 (崭新出厂)" readonly />
+      <span class="chip">YYYP</span>
+      <span class="chip">更多 ▾</span>
+      <button type="button" class="btn">分析</button>
+    </div>
+    <div class="body">
+      <aside class="history">
+        <h2>历史分析</h2>
+        <div class="hist-item active">
+          <div class="hist-name">蝴蝶刀（★） | 北方森林 (崭新出厂)</div>
+          <div class="hist-meta"><span>观望</span><span>#6803</span><span class="score">40</span></div>
+        </div>
+        <div class="hist-item">
+          <div class="hist-name">法玛斯 | 机械工业 (崭新出厂)</div>
+          <div class="hist-meta"><span>持有</span><span>#769</span><span class="score">52</span></div>
+        </div>
+      </aside>
+      <main class="main">
+        <section class="hero">
+          <div class="hero-top">
+            <div>
+              <div class="title">蝴蝶刀（★） | 北方森林 (崭新出厂)</div>
+              <div class="price-row">
+                <span class="price">7222.00</span>
+                <span class="up">+1.2%</span>
+                <span class="chip">cs:6803</span>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <span class="chip" style="cursor:pointer">重新分析</span>
+              <span class="chip" style="cursor:pointer">完整报告</span>
+            </div>
+          </div>
+          <div class="insight">
+            <div class="label">核心洞察</div>
+            <p>乖离率偏高、RSI 接近超买，短线不宜追高；若已持仓可观望，等待回踩 MA5/MA10 再评估。</p>
+          </div>
+        </section>
+        <section class="stats">
+          <div class="stat"><div class="stat-lbl">操作建议</div><div class="stat-val" style="color:var(--warning)">观望</div></div>
+          <div class="stat"><div class="stat-lbl">趋势判断</div><div class="stat-val">震荡</div></div>
+          <div class="stat"><div class="stat-lbl">信号分</div><div class="stat-val" style="color:var(--warning)">40</div></div>
+        </section>
+        <section class="row2">
+          <div class="panel">
+            <h3>平台价格</h3>
+            <div class="pills">
+              <span class="pill">BUFF 7350</span>
+              <span class="pill">YYYP 7222</span>
+              <span class="pill">Steam 6980</span>
+            </div>
+          </div>
+          <div class="panel">
+            <h3>板块联动 · 武器箱</h3>
+            <div class="pills"><span class="pill" style="background:var(--accent-dim);border-color:rgba(232,165,75,.35)">手套武器箱</span></div>
+          </div>
+        </section>
+        <section class="strategy">
+          <h3>策略点位</h3>
+          <div class="str-grid">
+            <div class="str-card"><div class="str-lbl">理想买入</div><div class="str-val">6822</div><div class="str-note">回踩 MA5</div></div>
+            <div class="str-card"><div class="str-lbl">二次买入</div><div class="str-val">6738</div><div class="str-note">回踩 MA10</div></div>
+            <div class="str-card stop"><div class="str-lbl">止损</div><div class="str-val">6600</div><div class="str-note">跌破支撑</div></div>
+            <div class="str-card take"><div class="str-lbl">止盈</div><div class="str-val">7500</div><div class="str-note">前高阻力</div></div>
+          </div>
+        </section>
+        <section class="bottom">
+          <div class="panel">
+            <h3>运行诊断 <span style="float:right;color:var(--warning)">部分降级</span></h3>
+            <p style="font-size:0.8125rem;margin-top:8px;color:var(--muted)">K 线融合 · 事件情报 · LLM 报告 — 量能信号宜保守解读</p>
+          </div>
+          <div class="panel">
+            <h3>资讯动态</h3>
+            <div class="news-item"><strong style="color:var(--cyan)">HLTV</strong> · IEM Cologne Major Stage 1 对阵出炉</div>
+            <div class="news-item"><strong style="color:var(--cyan)">HLTV</strong> · Major 阶段 1 现场观察</div>
+          </div>
+        </section>
+        <div style="padding:0 18px 18px">
+          <div class="panel" style="opacity:.85">
+            <h3>完整分析报告 ▾ 默认折叠</h3>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+
+  <div class="frame hidden" id="frame-current">
+    <div class="topbar">
+      <input class="search" value="6803" readonly />
+      <span class="chip">YYYP</span>
+      <span class="chip">策略</span>
+      <span class="chip">全量刷新K线</span>
+      <button type="button" class="btn">分析</button>
+    </div>
+    <div class="body">
+      <aside class="history"><h2>历史分析</h2><div class="hist-item active"><div class="hist-name">蝴蝶刀…</div></div></aside>
+      <main class="main current-narrow">
+        <p style="padding:14px 0;color:var(--muted);font-size:0.8125rem">窄栏 max-w-4xl，模块纵向拉长</p>
+        <div class="insight" style="margin:0 0 12px"><div class="label">核心洞察</div><p>…</p></div>
+        <div class="stat" style="margin-bottom:12px"><div class="stat-lbl">市场情绪 / 恐惧贪婪</div><div class="stat-val">40 悲观</div></div>
+        <div class="panel" style="margin-bottom:12px"><h3>策略点位（通栏）</h3></div>
+        <div class="panel" style="margin-bottom:12px"><h3>资讯（很长列表）</h3></div>
+        <div class="panel" style="margin-bottom:12px"><h3>技术面 bullet</h3></div>
+        <div class="empty-side">宽屏右侧大量空白 ← 当前痛点</div>
+      </main>
+    </div>
+  </div>
+
+  <div class="frame hidden" id="frame-tabs">
+    <div class="topbar"><input class="search" readonly /><button class="btn">分析</button></div>
+    <div class="body">
+      <aside class="history"><h2>历史</h2></aside>
+      <main class="main" style="padding:16px">
+        <div class="pills" style="margin-bottom:14px">
+          <span class="pill" style="background:var(--accent-dim)">概览</span>
+          <span class="pill">点位</span>
+          <span class="pill">资讯</span>
+          <span class="pill">诊断</span>
+          <span class="pill">报告</span>
+        </div>
+        <div class="insight"><div class="label">Tab 内只显示当前分区</div><p>适合模块特别多时，但少了一屏纵览。</p></div>
+      </main>
+    </div>
+  </div>
+
+  <div class="note-box">
+    <strong>如何打开：</strong> 双击本 HTML 文件，或在浏览器地址栏打开此路径。<br />
+    <strong>Cursor Canvas：</strong> 在 IDE 中打开
+    <code>canvases/cs-dashboard-layout-prototype.canvas.tsx</code>
+    可并排切换三种方案。<br />
+    <strong>确认后落地：</strong> 只改 <code>HomePage.tsx</code>、<code>CsReportSummary.tsx</code>、<code>index.css</code> 的 class 与顺序，不改 hooks / API。
+  </div>
+
+  <script>
+    const tabs = document.querySelectorAll(".tab");
+    const frames = {
+      proposed: document.getElementById("frame-proposed"),
+      current: document.getElementById("frame-current"),
+      tabs: document.getElementById("frame-tabs"),
+    };
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        tab.classList.add("active");
+        Object.values(frames).forEach((f) => f.classList.add("hidden"));
+        frames[tab.dataset.scheme].classList.remove("hidden");
+      });
+    });
+  </script>
+</body>
+</html>

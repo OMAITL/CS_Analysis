@@ -1,0 +1,25 @@
+# CS Relative Strength / 相对强势（原龙头策略 CS 化）
+
+name: dragon_head
+display_name: 相对强势
+description: 在同系列/同箱或相对饰品指数中识别走势更强的饰品。
+category: trend
+core_rules: [2, 7]
+aliases: [龙头, 龙头战法, 相对强势]
+
+instructions: |
+  **CS 相对强势策略**（无板块涨幅榜时的龙头替代）
+
+  1. **相对指数**（`index_summary` 若提供）
+     - 近阶段涨幅、量比是否跑赢饰品指数（`daily_pct_chg`、趋势对比）。
+     - 指数弱而本品强 → 相对强势；指数强而本品弱 → 跟风或落后。
+
+  2. **动能**
+     - `volume_ratio_5d` > 1 且趋势多头 → 资金关注度更高。
+     - `trend.signal_score`、`buy_signal` 作为辅助。
+
+  3. **事件焦点**（`event_intel`）
+     - 是否被 Major/新箱/赛事新闻点名或间接关联。
+
+  4. **风险**
+     - 相对强势已持续多日后乖离过大 → 不宜追；无指数数据时仅作定性参考并说明数据缺口。

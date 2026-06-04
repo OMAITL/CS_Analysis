@@ -1,0 +1,19 @@
+# CS Emotion Cycle / 情绪周期（饰品）
+
+name: emotion_cycle
+display_name: 情绪周期
+description: 用量比、RSI、涨跌幅与事件情报判断饰品市场情绪冷热。
+category: framework
+core_rules: [1, 2, 3, 5]
+aliases: [情绪, 情绪周期]
+
+instructions: |
+  **CS 情绪周期策略**
+
+  不用换手率（CS 无此字段）。用以下替代：
+
+  1. **量能热度**：`volume_ratio_5d`、近几日 `volume` 相对前段是否陡增/萎缩。
+  2. **价格热度**：近 5/10 日涨跌幅、`bias_ma5`、`rsi_12` / `rsi_status`。
+  3. **舆论**（可选）：`event_intel` 是否集中讨论、是否出现过热措辞。
+  4. **阶段判断**：冷淡（量缩+横盘）→ 启动（量增+突破）→ 过热（高 RSI+高乖离+放量）→ 退潮。
+  5. 饰品噪音大，单根 K 线或单日新闻不足以定论，需与趋势字段交叉验证。
