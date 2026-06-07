@@ -37,11 +37,25 @@ const MARKET_ALERT_TYPE_OPTIONS = [
   { value: 'market_light_score_drop', label: '大盘红绿灯分数下降' },
 ];
 
+const CS_HOLDINGS_ALERT_TYPE_OPTIONS = [
+  { value: 'cs_stop_loss', label: 'CS 持仓止损' },
+  { value: 'cs_concentration', label: 'CS 持仓集中度' },
+  { value: 'cs_price_stale', label: 'CS 价格状态' },
+  { value: 'cs_pnl_threshold', label: 'CS 盈亏阈值' },
+  { value: 'cs_price_cross', label: 'CS 价格突破' },
+];
+
+const CS_ITEM_ALERT_TYPE_OPTIONS = [
+  { value: 'cs_price_cross', label: 'CS 价格突破' },
+];
+
 const TARGET_SCOPE_OPTIONS = [
   { value: 'single_symbol', label: '单标的' },
   { value: 'watchlist', label: '自选股' },
   { value: 'portfolio_holdings', label: '持仓标的' },
   { value: 'portfolio_account', label: '持仓账户' },
+  { value: 'cs_holdings', label: 'CS 饰品持仓' },
+  { value: 'cs_item', label: 'CS 单饰品' },
   { value: 'market', label: '大盘市场' },
 ];
 
@@ -98,14 +112,24 @@ function isPortfolioScope(scope: AlertTargetScope): boolean {
   return scope === 'portfolio_holdings' || scope === 'portfolio_account';
 }
 
+function isCsScope(scope: AlertTargetScope): boolean {
+  return scope === 'cs_holdings' || scope === 'cs_item';
+}
+
 function defaultAlertTypeForScope(scope: AlertTargetScope): AlertType {
   if (scope === 'market') return 'market_light_status';
-  return scope === 'portfolio_account' ? 'portfolio_stop_loss' : 'price_cross';
+  if (scope === 'portfolio_account') return 'portfolio_stop_loss';
+  if (scope === 'cs_holdings') return 'cs_stop_loss';
+  if (scope === 'cs_item') return 'cs_price_cross';
+  return 'price_cross';
 }
 
 function optionsForScope(scope: AlertTargetScope) {
   if (scope === 'market') return MARKET_ALERT_TYPE_OPTIONS;
-  return scope === 'portfolio_account' ? PORTFOLIO_ALERT_TYPE_OPTIONS : SYMBOL_ALERT_TYPE_OPTIONS;
+  if (scope === 'portfolio_account') return PORTFOLIO_ALERT_TYPE_OPTIONS;
+  if (scope === 'cs_holdings') return CS_HOLDINGS_ALERT_TYPE_OPTIONS;
+  if (scope === 'cs_item') return CS_ITEM_ALERT_TYPE_OPTIONS;
+  return SYMBOL_ALERT_TYPE_OPTIONS;
 }
 
 export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmitting = false }) => {
@@ -113,6 +137,11 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
   const [targetScope, setTargetScope] = useState<AlertTargetScope>('single_symbol');
   const [target, setTarget] = useState('');
   const [portfolioTarget, setPortfolioTarget] = useState('all');
+  const [csHoldingsTarget, setCsHoldingsTarget] = useState('all');
+  const [csGoodIdTarget, setCsGoodIdTarget] = useState('');
+  const [csPricePlatform, setCsPricePlatform] = useState<'yyyp' | 'buff' | 'steam'>('yyyp');
+  const [csPnlDirection, setCsPnlDirection] = useState<'loss' | 'gain'>('loss');
+  const [csPnlThresholdPct, setCsPnlThresholdPct] = useState('10');
   const [marketRegion, setMarketRegion] = useState<MarketRegion>('cn');
   const [accounts, setAccounts] = useState<PortfolioAccountItem[]>([]);
   const [accountsError, setAccountsError] = useState<string | null>(null);
@@ -199,6 +228,15 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
       setThreshold('');
     } else if (nextType === 'portfolio_stop_loss') {
       setStopLossMode('near');
+    } else if (nextType === 'cs_stop_loss') {
+      setStopLossMode('near');
+    } else if (nextType === 'cs_price_cross') {
+      setPriceDirection('above');
+      setPrice('');
+      setCsPricePlatform('yyyp');
+    } else if (nextType === 'cs_pnl_threshold') {
+      setCsPnlDirection('loss');
+      setCsPnlThresholdPct('10');
     } else if (nextType === 'market_light_status') {
       setMarketLightStatuses(['red', 'yellow']);
     } else if (nextType === 'market_light_score_drop') {
@@ -324,6 +362,19 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     if (alertType === 'portfolio_stop_loss') {
       return { mode: stopLossMode };
     }
+    if (alertType === 'cs_stop_loss') {
+      return { mode: stopLossMode };
+    }
+    if (alertType === 'cs_price_cross') {
+      const parsedPrice = parsePositiveNumber(price, '价格阈值');
+      if (parsedPrice == null) return null;
+      return { direction: priceDirection, price: parsedPrice, platform: csPricePlatform };
+    }
+    if (alertType === 'cs_pnl_threshold') {
+      const parsedThreshold = parsePositiveNumber(csPnlThresholdPct, '盈亏阈值');
+      if (parsedThreshold == null) return null;
+      return { direction: csPnlDirection, thresholdPct: parsedThreshold };
+    }
     if (alertType === 'market_light_status') {
       if (marketLightStatuses.length === 0) {
         setFormError('至少选择一个红绿灯状态');
@@ -345,6 +396,8 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     setTargetScope(nextScope);
     setAlertType(nextType);
     setPortfolioTarget('all');
+    setCsHoldingsTarget('all');
+    setCsGoodIdTarget('');
     setMarketRegion('cn');
     resetParameters(nextType);
     setFormError(null);
@@ -364,6 +417,15 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
       resolvedTarget = 'default';
     } else if (targetScope === 'market') {
       resolvedTarget = marketRegion;
+    } else if (targetScope === 'cs_holdings') {
+      resolvedTarget = csHoldingsTarget;
+    } else if (targetScope === 'cs_item') {
+      const parsedGoodId = Number(csGoodIdTarget);
+      if (!Number.isInteger(parsedGoodId) || parsedGoodId <= 0) {
+        setFormError('CS 单饰品目标必须是正整数 good_id');
+        return;
+      }
+      resolvedTarget = String(parsedGoodId);
     } else {
       resolvedTarget = portfolioTarget;
     }
@@ -433,6 +495,33 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
           options={MARKET_REGION_OPTIONS}
           disabled={isSubmitting}
           onChange={(value) => setMarketRegion(value as MarketRegion)}
+        />
+      );
+    }
+    if (targetScope === 'cs_holdings') {
+      return (
+        <Select
+          label="CS 平台范围"
+          value={csHoldingsTarget}
+          options={[
+            { value: 'all', label: '全部持仓' },
+            { value: 'yyyp', label: '悠悠有品' },
+            { value: 'buff', label: 'BUFF' },
+            { value: 'steam', label: 'Steam' },
+          ]}
+          disabled={isSubmitting}
+          onChange={setCsHoldingsTarget}
+        />
+      );
+    }
+    if (targetScope === 'cs_item') {
+      return (
+        <Input
+          label="good_id"
+          value={csGoodIdTarget}
+          onChange={(event) => setCsGoodIdTarget(event.target.value)}
+          placeholder="例如 12345"
+          disabled={isSubmitting}
         />
       );
     }
@@ -711,7 +800,7 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
           </div>
         ) : null}
 
-        {alertType === 'portfolio_stop_loss' ? (
+        {alertType === 'portfolio_stop_loss' || alertType === 'cs_stop_loss' ? (
           <Select
             label="止损模式"
             value={stopLossMode}
@@ -719,6 +808,62 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
             disabled={isSubmitting}
             onChange={(value) => setStopLossMode(value as PortfolioStopLossMode)}
           />
+        ) : null}
+
+        {alertType === 'cs_price_cross' ? (
+          <div className="grid gap-4 md:grid-cols-3">
+            <Select
+              label="方向"
+              value={priceDirection}
+              options={PRICE_DIRECTION_OPTIONS}
+              disabled={isSubmitting}
+              onChange={(value) => setPriceDirection(value as 'above' | 'below')}
+            />
+            <Input
+              label="价格阈值"
+              type="number"
+              min="0"
+              step="0.01"
+              value={price}
+              onChange={(event) => setPrice(event.target.value)}
+              disabled={isSubmitting}
+            />
+            <Select
+              label="价格平台"
+              value={csPricePlatform}
+              options={[
+                { value: 'yyyp', label: '悠悠有品' },
+                { value: 'buff', label: 'BUFF' },
+                { value: 'steam', label: 'Steam' },
+              ]}
+              disabled={isSubmitting}
+              onChange={(value) => setCsPricePlatform(value as 'yyyp' | 'buff' | 'steam')}
+            />
+          </div>
+        ) : null}
+
+        {alertType === 'cs_pnl_threshold' ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <Select
+              label="方向"
+              value={csPnlDirection}
+              options={[
+                { value: 'loss', label: '亏损达到' },
+                { value: 'gain', label: '盈利达到' },
+              ]}
+              disabled={isSubmitting}
+              onChange={(value) => setCsPnlDirection(value as 'loss' | 'gain')}
+            />
+            <Input
+              label="盈亏阈值 (%)"
+              type="number"
+              min="0"
+              step="0.1"
+              value={csPnlThresholdPct}
+              onChange={(event) => setCsPnlThresholdPct(event.target.value)}
+              disabled={isSubmitting}
+            />
+          </div>
         ) : null}
 
         {alertType === 'market_light_status' ? (

@@ -1,5 +1,4 @@
 import type React from 'react';
-import { Bot } from 'lucide-react';
 import type { CsItemAnalyzeResponse } from '../../../types/cs';
 import type { CsGoodIdItem } from '../../../types/cs';
 import type { CsHomeHistoryItem, CsSkillInfo } from '../../../types/csHome';
@@ -51,18 +50,6 @@ export const IaAgentWorkbench: React.FC<IaAgentWorkbenchProps> = ({
   onSelectHistory,
 }) => (
   <div className="ia-workbench ia-workbench-split">
-    <header className="ia-workbench-header ia-workbench-header-compact">
-      <div className="ia-workbench-brand">
-        <div className="ia-workbench-logo">
-          <Bot className="h-5 w-5" />
-        </div>
-        <div>
-          <p className="ia-workbench-kicker">Multi-Agent Workbench</p>
-          <h1 className="ia-workbench-title">饰品投资分析 Agent</h1>
-        </div>
-      </div>
-    </header>
-
     <div className="ia-split-layout">
       <IaTaskSidebar
         query={query}

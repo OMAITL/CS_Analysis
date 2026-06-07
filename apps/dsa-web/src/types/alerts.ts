@@ -11,12 +11,25 @@ export type AlertType =
   | 'portfolio_concentration'
   | 'portfolio_drawdown'
   | 'portfolio_price_stale'
+  | 'cs_price_cross'
+  | 'cs_pnl_threshold'
+  | 'cs_price_stale'
+  | 'cs_concentration'
+  | 'cs_stop_loss'
   | 'market_light_status'
   | 'market_light_score_drop';
 export type AlertSeverity = 'info' | 'warning' | 'critical';
-export type AlertTargetScope = 'single_symbol' | 'watchlist' | 'portfolio_holdings' | 'portfolio_account' | 'market';
-export type AlertDirection = 'above' | 'below' | 'up' | 'down' | 'bullish_cross' | 'bearish_cross';
+export type AlertTargetScope =
+  | 'single_symbol'
+  | 'watchlist'
+  | 'portfolio_holdings'
+  | 'portfolio_account'
+  | 'cs_holdings'
+  | 'cs_item'
+  | 'market';
+export type AlertDirection = 'above' | 'below' | 'up' | 'down' | 'bullish_cross' | 'bearish_cross' | 'loss' | 'gain';
 export type PortfolioStopLossMode = 'near' | 'breach';
+export type CsPricePlatform = 'yyyp' | 'buff' | 'steam';
 export type MarketRegion = 'cn' | 'hk' | 'us';
 export type MarketLightStatus = 'yellow' | 'red';
 export type AlertDryRunStatus = 'triggered' | 'not_triggered' | 'evaluation_error';
@@ -38,6 +51,8 @@ export interface AlertRuleParameters {
   mode?: PortfolioStopLossMode;
   statuses?: MarketLightStatus[];
   minDrop?: number;
+  thresholdPct?: number;
+  platform?: CsPricePlatform;
 }
 
 export interface AlertRuleItem {

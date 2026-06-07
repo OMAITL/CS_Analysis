@@ -19,6 +19,11 @@ vi.mock('../../../contexts/AuthContext', () => ({
 
 vi.mock('../../../stores/agentChatStore', () => ({
   useAgentChatStore: (selector: (state: { completionBadge: boolean }) => unknown) =>
+    selector({ completionBadge: false }),
+}));
+
+vi.mock('../../../stores/csChatStore', () => ({
+  useCsChatStore: (selector: (state: { completionBadge: boolean }) => unknown) =>
     selector({ completionBadge: completionBadgeState.value }),
 }));
 
@@ -37,7 +42,7 @@ describe('SidebarNav', () => {
     );
 
     expect(screen.getByTestId('chat-completion-badge')).toBeInTheDocument();
-    expect(screen.getByLabelText('问股有新消息')).toBeInTheDocument();
+    expect(screen.getByLabelText('问饰品有新消息')).toBeInTheDocument();
 
     completionBadgeState.value = false;
     rerender(

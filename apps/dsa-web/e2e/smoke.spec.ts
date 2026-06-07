@@ -60,7 +60,7 @@ test.describe('web smoke', () => {
     const stockInput = page.getByPlaceholder('输入股票代码或名称，如 600519、贵州茅台、AAPL');
     await expect(stockInput).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('link', { name: '首页' })).toBeVisible();
-    await expect(page.getByRole('link', { name: '问股' })).toBeVisible();
+    await expect(page.getByRole('link', { name: '问饰品' })).toBeVisible();
     await expect(page.getByText('历史分析')).toBeVisible();
 
     await stockInput.fill('600519');
@@ -72,7 +72,7 @@ test.describe('web smoke', () => {
     await login(page);
 
     // Navigate to chat page by clicking the link
-    await page.getByRole('link', { name: '问股' }).click();
+    await page.getByRole('link', { name: '问饰品' }).click();
     await page.waitForLoadState('domcontentloaded');
     await page.waitForTimeout(1000);
 
@@ -80,11 +80,11 @@ test.describe('web smoke', () => {
     await expect(page.getByTestId('chat-session-list-scroll')).toBeVisible();
     await expect(page.getByTestId('chat-message-scroll')).toBeVisible();
 
-    const input = page.getByPlaceholder(/分析 600519/);
+    const input = page.getByPlaceholder(/火蛇|高位是否需要减仓/);
     await expect(input).toBeVisible({ timeout: 5000 });
-    await expect(page.getByText('策略', { exact: true })).toBeVisible();
+    await expect(page.getByText('分析视角', { exact: false })).toBeVisible();
 
-    const prompt = '请简要分析 600519';
+    const prompt = 'AK-47 火蛇在高位要不要出货？';
     await input.fill(prompt);
     await page.getByRole('button', { name: '发送' }).click();
 
@@ -94,11 +94,11 @@ test.describe('web smoke', () => {
   test('chat page uses accessible labels instead of native title attributes for key actions', async ({ page }) => {
     await login(page);
 
-    await page.getByRole('link', { name: '问股' }).click();
+    await page.getByRole('link', { name: '问饰品' }).click();
     await page.waitForLoadState('domcontentloaded');
 
     const sendButton = page.getByRole('button', { name: '发送' });
-    const composer = page.getByPlaceholder(/分析 600519/);
+    const composer = page.getByPlaceholder(/火蛇|高位是否需要减仓/);
 
     await expect(page.getByTestId('chat-workspace')).toBeVisible({ timeout: 10_000 });
     await expect(sendButton).toBeVisible({ timeout: 10_000 });

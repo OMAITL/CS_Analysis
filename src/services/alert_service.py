@@ -47,6 +47,17 @@ from src.services.portfolio_alerts import (
     portfolio_effective_target,
     result_to_target_result,
 )
+from src.services.cs_alerts import (
+    CS_HOLDINGS_ALERT_TYPES,
+    CS_HOLDINGS_TARGET_SCOPES,
+    CSHoldingsAlert,
+    cs_effective_target,
+    evaluate_cs_holdings_alert,
+    expand_cs_item_targets,
+    make_cs_holdings_payload,
+    normalize_cs_alert_parameters,
+    normalize_cs_target,
+)
 from src.services.market_light_alerts import (
     MARKET_ALERT_TYPES,
     MARKET_LIGHT_DATA_SOURCE,
@@ -68,8 +79,16 @@ from src.utils.sanitize import sanitize_diagnostic_text
 
 LEGACY_RUNTIME_ALERT_TYPES = frozenset({"price_cross", "price_change_percent", "volume_spike"})
 SYMBOL_ALERT_TYPES = LEGACY_RUNTIME_ALERT_TYPES | TECHNICAL_ALERT_TYPES
-SUPPORTED_ALERT_TYPES = SYMBOL_ALERT_TYPES | PORTFOLIO_ALERT_TYPES | MARKET_ALERT_TYPES
-SUPPORTED_TARGET_SCOPES = frozenset({"single_symbol", "watchlist", "portfolio_holdings", "portfolio_account", "market"})
+SUPPORTED_ALERT_TYPES = SYMBOL_ALERT_TYPES | PORTFOLIO_ALERT_TYPES | MARKET_ALERT_TYPES | CS_HOLDINGS_ALERT_TYPES
+SUPPORTED_TARGET_SCOPES = frozenset({
+    "single_symbol",
+    "watchlist",
+    "portfolio_holdings",
+    "portfolio_account",
+    "market",
+    "cs_holdings",
+    "cs_item",
+})
 SUPPORTED_SEVERITIES = frozenset({"info", "warning", "critical"})
 NULLABLE_RULE_UPDATE_FIELDS = frozenset({"cooldown_policy", "notification_policy"})
 
@@ -213,6 +232,8 @@ class AlertService:
             return await self._evaluate_technical_indicator(rule, daily_cache=daily_cache)
         if isinstance(rule, PortfolioRiskAlert):
             return await asyncio.to_thread(evaluate_portfolio_risk_alert, rule)
+        if isinstance(rule, CSHoldingsAlert):
+            return await asyncio.to_thread(evaluate_cs_holdings_alert, rule)
         if isinstance(rule, MarketLightAlert):
             return await asyncio.to_thread(evaluate_market_light_alert, rule, cache=daily_cache)
         if isinstance(rule, StaticAlertEvaluation):
@@ -691,6 +712,12 @@ class AlertService:
             return threshold_for_indicator(rule.alert_type, rule.indicator_params)
         if isinstance(rule, PortfolioRiskAlert):
             return None
+        if isinstance(rule, CSHoldingsAlert):
+            if rule.alert_type == "cs_price_cross":
+                return float(rule.parameters.get("price") or 0)
+            if rule.alert_type == "cs_pnl_threshold":
+                return float(rule.parameters.get("threshold_pct") or 0)
+            return None
         if isinstance(rule, MarketLightAlert):
             if rule.alert_type == "market_light_score_drop":
                 return float(rule.parameters.get("min_drop", 0) or 0)
@@ -707,6 +734,12 @@ class AlertService:
             return "daily_data"
         if isinstance(rule, PortfolioRiskAlert):
             return "portfolio_risk"
+        if isinstance(rule, CSHoldingsAlert):
+            if rule.alert_type == "cs_price_cross":
+                return "csqaq"
+            if rule.alert_type in {"cs_concentration", "cs_stop_loss", "cs_price_stale"}:
+                return "cs_holdings_risk"
+            return "cs_holdings_snapshot"
         if isinstance(rule, MarketLightAlert):
             return MARKET_LIGHT_DATA_SOURCE
         return None
@@ -924,6 +957,14 @@ class AlertService:
             return
         if alert_type in PORTFOLIO_ALERT_TYPES:
             raise AlertServiceError("portfolio alert types require target_scope=portfolio_account")
+        if target_scope in CS_HOLDINGS_TARGET_SCOPES:
+            if alert_type not in CS_HOLDINGS_ALERT_TYPES:
+                raise AlertServiceError(f"{target_scope} only supports CS holdings alert types")
+            if target_scope == "cs_item" and alert_type != "cs_price_cross":
+                raise AlertServiceError("cs_item only supports cs_price_cross")
+            return
+        if alert_type in CS_HOLDINGS_ALERT_TYPES:
+            raise AlertServiceError("CS holdings alert types require target_scope=cs_holdings or cs_item")
         if target_scope in {"single_symbol", "watchlist", "portfolio_holdings"} and alert_type not in SYMBOL_ALERT_TYPES:
             raise UnsupportedAlertTypeError(f"unsupported alert_type for {target_scope}: {alert_type}")
 
@@ -933,6 +974,11 @@ class AlertService:
         if target_scope == "market":
             try:
                 return normalize_market_region(target)
+            except ValueError as exc:
+                raise AlertServiceError(str(exc)) from exc
+        if target_scope in CS_HOLDINGS_TARGET_SCOPES:
+            try:
+                return normalize_cs_target(target_scope, target)
             except ValueError as exc:
                 raise AlertServiceError(str(exc)) from exc
         try:
@@ -977,6 +1023,12 @@ class AlertService:
             except ValueError as exc:
                 raise AlertServiceError(str(exc)) from exc
 
+        if alert_type in CS_HOLDINGS_ALERT_TYPES:
+            try:
+                return normalize_cs_alert_parameters(alert_type, parameters)
+            except ValueError as exc:
+                raise AlertServiceError(str(exc)) from exc
+
         if alert_type in MARKET_ALERT_TYPES:
             try:
                 return normalize_market_alert_parameters(alert_type, parameters)
@@ -1012,6 +1064,11 @@ class AlertService:
 
         if data["alert_type"] in PORTFOLIO_ALERT_TYPES:
             return [make_portfolio_risk_payload(parent_key=parent_key, data=data)]
+
+        if data["alert_type"] in CS_HOLDINGS_ALERT_TYPES:
+            if data["alert_type"] == "cs_price_cross" and data["target_scope"] == "cs_holdings":
+                return self._build_cs_price_cross_payloads(parent_key=parent_key, data=data)
+            return [make_cs_holdings_payload(parent_key=parent_key, data=data)]
 
         if data["alert_type"] in MARKET_ALERT_TYPES:
             return [make_market_light_payload(parent_key=parent_key, data=data, config=config)]
@@ -1098,6 +1155,82 @@ class AlertService:
             )
         ]
 
+    def _build_cs_price_cross_payloads(
+        self,
+        *,
+        parent_key: str,
+        data: Dict[str, Any],
+    ) -> List[RuntimeAlertPayload]:
+        try:
+            targets, overflow_count = expand_cs_item_targets(
+                target_scope=data["target_scope"],
+                target=data["target"],
+            )
+        except Exception as exc:
+            return [
+                make_static_payload(
+                    parent_key=parent_key,
+                    rule_id=int(data["id"] or 0),
+                    alert_type=data["alert_type"],
+                    effective_target=f"{data['target_scope']}:{data['target']}",
+                    display_target="CS 持仓展开失败",
+                    message=self._sanitize_text(str(exc) or "target expansion failed"),
+                    record_status="failed",
+                )
+            ]
+
+        payloads: List[RuntimeAlertPayload] = []
+        for target in targets:
+            child_data = dict(data)
+            child_data["target_scope"] = "cs_item"
+            child_data["target"] = str(target["good_id"])
+            rule = CSHoldingsAlert(
+                target_scope="cs_item",
+                target=str(target["good_id"]),
+                alert_type=child_data["alert_type"],
+                parameters=dict(child_data.get("parameters") or {}),
+                metadata={
+                    "persisted_rule_id": child_data["id"],
+                    "effective_target": cs_effective_target("cs_item", str(target["good_id"])),
+                    "display_target": str(target.get("item_name") or target["good_id"]),
+                },
+                description=child_data.get("name") or child_data["alert_type"],
+            )
+            effective_target = cs_effective_target("cs_item", str(target["good_id"]))
+            payloads.append(
+                RuntimeAlertPayload(
+                    key=f"{parent_key}|{effective_target}",
+                    rule=rule,
+                    effective_target=effective_target,
+                    display_target=str(target.get("item_name") or target["good_id"]),
+                )
+            )
+        if overflow_count:
+            payloads.append(
+                make_static_payload(
+                    parent_key=parent_key,
+                    rule_id=int(data["id"] or 0),
+                    alert_type=data["alert_type"],
+                    effective_target=f"{data['target_scope']}:{data['target']}:overflow",
+                    display_target="展开目标超限",
+                    message=f"Skipped {overflow_count} CS items over soft cap",
+                    record_status="degraded",
+                )
+            )
+        if not payloads:
+            payloads.append(
+                make_static_payload(
+                    parent_key=parent_key,
+                    rule_id=int(data["id"] or 0),
+                    alert_type=data["alert_type"],
+                    effective_target=f"{data['target_scope']}:{data['target']}",
+                    display_target="CS 持仓",
+                    message="No CS holdings with good_id to evaluate",
+                    record_status="skipped",
+                )
+            )
+        return payloads
+
     def _to_runtime_rule(self, row: AlertRuleRecord, data: Optional[Dict[str, Any]] = None):
         data = data or self._serialize_rule_base(row)
         parameters = data["parameters"]
@@ -1173,6 +1306,8 @@ class AlertService:
             cooldown_target = (
                 portfolio_effective_target(str(row.target))
                 if str(row.target_scope) == "portfolio_account"
+                else cs_effective_target(str(row.target_scope), str(row.target))
+                if str(row.target_scope) in CS_HOLDINGS_TARGET_SCOPES
                 else str(row.target)
             )
             cooldown = self.repo.get_rule_cooldown_summary(
@@ -1259,6 +1394,16 @@ class AlertService:
             return f"{target} portfolio drawdown"
         if alert_type == "portfolio_price_stale":
             return f"{target} portfolio stale price"
+        if alert_type == "cs_price_cross":
+            return f"{target} CS price {parameters['direction']} {parameters['price']}"
+        if alert_type == "cs_pnl_threshold":
+            return f"{target} CS pnl {parameters['direction']} {parameters['threshold_pct']}%"
+        if alert_type == "cs_price_stale":
+            return f"{target} CS stale price"
+        if alert_type == "cs_concentration":
+            return f"{target} CS concentration"
+        if alert_type == "cs_stop_loss":
+            return f"{target} CS stop loss {parameters.get('mode', 'near')}"
         if alert_type == "market_light_status":
             statuses = ",".join(parameters.get("statuses") or ["red", "yellow"])
             return f"{target} market light status {statuses}"

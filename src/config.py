@@ -931,6 +931,19 @@ class Config:
     portfolio_risk_lookback_days: int = 180
     portfolio_fx_update_enabled: bool = True
 
+    # === CS holdings risk thresholds ===
+    cs_holdings_risk_concentration_alert_pct: float = 35.0
+    cs_holdings_risk_stop_loss_alert_pct: float = 10.0
+    cs_holdings_risk_stop_loss_near_ratio: float = 0.8
+    cs_holdings_risk_pnl_gain_alert_pct: float = 30.0
+
+    # === CS auto alerts (no manual /alerts setup) ===
+    cs_holdings_auto_alerts_enabled: bool = True
+    cs_auto_portfolio_alerts_enabled: bool = True
+    cs_auto_price_alerts_enabled: bool = True
+    cs_auto_price_alert_take_profit_pct: float = 20.0
+    cs_auto_price_alert_stop_loss_pct: float = 10.0
+
     # Discord 机器人状态
     discord_bot_status: str = "A股智能分析 | /help"
 
@@ -1803,7 +1816,46 @@ class Config:
                 field_name='PORTFOLIO_RISK_LOOKBACK_DAYS',
                 minimum=1,
             ),
-            portfolio_fx_update_enabled=os.getenv('PORTFOLIO_FX_UPDATE_ENABLED', 'true').lower() == 'true'
+            portfolio_fx_update_enabled=os.getenv('PORTFOLIO_FX_UPDATE_ENABLED', 'true').lower() == 'true',
+            cs_holdings_risk_concentration_alert_pct=parse_env_float(
+                os.getenv('CS_HOLDINGS_RISK_CONCENTRATION_ALERT_PCT'),
+                35.0,
+                field_name='CS_HOLDINGS_RISK_CONCENTRATION_ALERT_PCT',
+                minimum=0.0,
+            ),
+            cs_holdings_risk_stop_loss_alert_pct=parse_env_float(
+                os.getenv('CS_HOLDINGS_RISK_STOP_LOSS_ALERT_PCT'),
+                10.0,
+                field_name='CS_HOLDINGS_RISK_STOP_LOSS_ALERT_PCT',
+                minimum=0.0,
+            ),
+            cs_holdings_risk_stop_loss_near_ratio=parse_env_float(
+                os.getenv('CS_HOLDINGS_RISK_STOP_LOSS_NEAR_RATIO'),
+                0.8,
+                field_name='CS_HOLDINGS_RISK_STOP_LOSS_NEAR_RATIO',
+                minimum=0.0,
+            ),
+            cs_holdings_risk_pnl_gain_alert_pct=parse_env_float(
+                os.getenv('CS_HOLDINGS_RISK_PNL_GAIN_ALERT_PCT'),
+                30.0,
+                field_name='CS_HOLDINGS_RISK_PNL_GAIN_ALERT_PCT',
+                minimum=0.0,
+            ),
+            cs_holdings_auto_alerts_enabled=os.getenv('CS_HOLDINGS_AUTO_ALERTS_ENABLED', 'true').lower() == 'true',
+            cs_auto_portfolio_alerts_enabled=os.getenv('CS_AUTO_PORTFOLIO_ALERTS_ENABLED', 'true').lower() == 'true',
+            cs_auto_price_alerts_enabled=os.getenv('CS_AUTO_PRICE_ALERTS_ENABLED', 'true').lower() == 'true',
+            cs_auto_price_alert_take_profit_pct=parse_env_float(
+                os.getenv('CS_AUTO_PRICE_ALERT_TAKE_PROFIT_PCT'),
+                20.0,
+                field_name='CS_AUTO_PRICE_ALERT_TAKE_PROFIT_PCT',
+                minimum=0.0,
+            ),
+            cs_auto_price_alert_stop_loss_pct=parse_env_float(
+                os.getenv('CS_AUTO_PRICE_ALERT_STOP_LOSS_PCT'),
+                10.0,
+                field_name='CS_AUTO_PRICE_ALERT_STOP_LOSS_PCT',
+                minimum=0.0,
+            ),
         )
     
     @classmethod

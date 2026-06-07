@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional, Union
@@ -255,3 +256,66 @@ class CSQAQBrowserCrawler:
     def crawl_goods_page_charts(self, good_id: int, *, wait_ms: int = 12_000) -> pd.DataFrame:
         """Backward-compatible alias – use :meth:`crawl_item_kline_volume` instead."""
         return self.crawl_item_kline_volume(good_id, max_pages=1)
+
+    def search_goods(self, query: str, *, page_size: int = 20) -> List[Dict[str, Any]]:
+        """
+        Search items through csqaq.com same-origin API (works when Open API token returns 401).
+
+        Uses Playwright to call ``/api/v1/info/get_good_id`` from the website origin.
+        """
+        from playwright.sync_api import sync_playwright
+
+        term = (query or "").strip()
+        if not term:
+            return []
+
+        payload = {
+            "page_index": 1,
+            "page_size": max(1, min(int(page_size), 50)),
+            "search": term,
+        }
+
+        import os
+
+        api_token = (os.getenv("CSQAQ_API_TOKEN") or "").strip()
+        api_base = (os.getenv("CSQAQ_BASE_URL") or "https://api.csqaq.com").rstrip("/")
+        api_url = f"{api_base}/api/v1/info/get_good_id"
+
+        with sync_playwright() as playwright:
+            request = playwright.request.new_context(
+                extra_http_headers={
+                    "ApiToken": api_token,
+                    "Content-Type": "application/json",
+                }
+            )
+            resp = request.post(api_url, data=payload, timeout=self.timeout_ms)
+            body = resp.text()
+            request.dispose()
+
+        try:
+            result = json.loads(body)
+        except json.JSONDecodeError:
+            raise RuntimeError(f"browser get_good_id invalid JSON: {body[:200]}")
+
+        if not isinstance(result, dict) or int(result.get("code") or 0) != 200:
+            raise RuntimeError(f"browser get_good_id failed: {result}")
+
+        raw_items = (result.get("data") or {})
+        rows: List[Dict[str, Any]] = []
+        if isinstance(raw_items, dict):
+            for value in raw_items.values():
+                if not isinstance(value, dict):
+                    continue
+                gid = value.get("id") if value.get("id") is not None else value.get("good_id")
+                if gid is None:
+                    continue
+                rows.append(
+                    {
+                        "good_id": int(gid),
+                        "name": str(value.get("name") or gid),
+                        "market_hash_name": str(
+                            value.get("market_hash_name") or value.get("marketHashName") or value.get("name") or gid
+                        ),
+                    }
+                )
+        return rows

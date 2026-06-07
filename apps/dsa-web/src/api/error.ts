@@ -472,18 +472,33 @@ export function parseApiError(error: unknown): ParsedApiError {
     });
   }
 
+  const csqaqAuthFailed =
+    includesAny(matchText, ['csqaq_unauthorized', 'get_good_id', 'api.csqaq.com'])
+    && includesAny(matchText, ['401', 'unauthorized', '白名单', 'ip']);
+  if (csqaqAuthFailed) {
+    return createParsedApiError({
+      title: 'CSQAQ 鉴权失败',
+      message:
+        '本地 API 已连接，但 CSQAQ 拒绝了请求（401）。请在 CSQAQ 用户中心核对 ApiToken，并将当前公网 IP 加入白名单后重启 uvicorn。',
+      rawMessage,
+      status: status || 502,
+      category: 'upstream_auth',
+    });
+  }
+
   const requestUrl = isRecord(response?.config) && typeof response.config.url === 'string'
     ? response.config.url
     : '';
   const devProxyBackendDown = status === 500 && (
     includesAny(matchText, ['internal server error', 'econnrefused', 'connect econnrefused', 'proxy error'])
     || (!payloadText && includesAny([String(response?.statusText || '')], ['internal server error']))
-  ) && (requestUrl.includes('/api/') || includesAny(matchText, ['proxy error']));
+  ) && (requestUrl.includes('/api/') || includesAny(matchText, ['proxy error']))
+    && !includesAny(matchText, ['cs item search', 'csqaq', 'get_good_id', 'unauthorized']);
   if (devProxyBackendDown) {
     return createParsedApiError({
       title: '无法连接到本地 API 服务',
       message:
-        `前端已启动，但本机 API（${LOCAL_DEV_API_ORIGIN}）未响应。请在项目根目录运行：uvicorn server:app --reload --host 0.0.0.0 --port ${LOCAL_DEV_API_PORT}`,
+        `前端已启动，但本机 API（${LOCAL_DEV_API_ORIGIN}）未响应。常见原因是后端端口与 .env 中 WEBUI_PORT（当前 ${LOCAL_DEV_API_PORT}）不一致——请在项目根目录运行：uvicorn server:app --reload --host 0.0.0.0 --port ${LOCAL_DEV_API_PORT}`,
       rawMessage,
       status,
       category: 'local_connection_failed',

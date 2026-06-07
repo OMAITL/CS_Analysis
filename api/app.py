@@ -19,6 +19,7 @@ import logging
 import mimetypes
 import os
 import re
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -126,14 +127,61 @@ from api.middlewares.error_handler import add_error_handlers
 from api.v1.schemas.common import HealthResponse
 from src.services.system_config_service import SystemConfigService
 
+logger = logging.getLogger(__name__)
+
+
+def _should_run_alert_worker(config) -> bool:
+    return bool(
+        getattr(config, "agent_event_monitor_enabled", False)
+        or getattr(config, "cs_holdings_auto_alerts_enabled", False)
+    )
+
+
+def _alert_worker_loop(stop_event: threading.Event, interval_seconds: int) -> None:
+    from src.config import get_config
+    from src.services.alert_worker import AlertWorker
+
+    worker = AlertWorker(config_provider=get_config)
+    while not stop_event.is_set():
+        try:
+            stats = worker.run_once()
+            triggered = int(stats.get("triggered") or 0)
+            if triggered:
+                logger.info("[AlertWorker] background cycle triggered=%s", triggered)
+        except Exception:
+            logger.exception("[AlertWorker] background cycle failed")
+        if stop_event.wait(max(30, interval_seconds)):
+            break
+
 
 @asynccontextmanager
 async def app_lifespan(app: FastAPI):
     """Initialize and release shared services for the app lifecycle."""
     app.state.system_config_service = SystemConfigService()
+    stop_event = threading.Event()
+    worker_thread: threading.Thread | None = None
     try:
+        from src.config import get_config
+        from src.services.cs_auto_alerts_service import maybe_sync_cs_auto_alerts
+
+        runtime_config = get_config()
+        if getattr(runtime_config, "cs_holdings_auto_alerts_enabled", False):
+            maybe_sync_cs_auto_alerts()
+        if _should_run_alert_worker(runtime_config):
+            interval_minutes = max(1, int(getattr(runtime_config, "agent_event_monitor_interval_minutes", 5)))
+            worker_thread = threading.Thread(
+                target=_alert_worker_loop,
+                args=(stop_event, interval_minutes * 60),
+                name="alert_worker_background",
+                daemon=True,
+            )
+            worker_thread.start()
+            logger.info("[AlertWorker] background polling started (interval=%sm)", interval_minutes)
         yield
     finally:
+        stop_event.set()
+        if worker_thread is not None and worker_thread.is_alive():
+            worker_thread.join(timeout=5)
         if hasattr(app.state, "system_config_service"):
             delattr(app.state, "system_config_service")
 

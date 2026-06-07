@@ -25,6 +25,35 @@ class CSItemSearchResponse(BaseModel):
     page_index: int = 1
     page_size: int = 20
     total: int = 0
+    source: Optional[str] = Field(None, description="local | csqaq")
+
+
+class CSItemCatalogStatusResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    item_count: int = 0
+    api_total: int = 0
+    last_full_sync_at: Optional[str] = None
+    last_incremental_sync_at: Optional[str] = None
+    last_sync_status: str = "idle"
+    last_sync_mode: str = ""
+    checkpoint_page: int = 0
+    checkpoint_mode: str = ""
+    last_error: str = ""
+    local_search_enabled: bool = True
+
+
+class CSItemCatalogSyncResponse(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+
+    mode: str
+    pages_fetched: int = 0
+    rows_upserted: int = 0
+    api_total: int = 0
+    previous_api_total: Optional[int] = None
+    resume: Optional[bool] = None
+    max_pages: Optional[int] = None
+    completed: Optional[bool] = None
 
 
 class CSItemAnalyzeRequest(BaseModel):
@@ -200,3 +229,218 @@ class CSItemAnalyzeResponse(BaseModel):
         default_factory=list,
         description="Skill ids activated in GeminiAnalyzer.analyze() system prompt (stock-equivalent path)",
     )
+
+
+class CSChatRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    message: str
+    session_id: Optional[str] = None
+    skills: Optional[List[str]] = None
+    context: Optional[Dict[str, Any]] = Field(
+        None,
+        description=(
+            "Optional context: scope (market|portfolio|single_item|general), "
+            "good_id, item_name, platform, previous_analysis_summary"
+        ),
+    )
+
+
+class CSChatResponse(BaseModel):
+    success: bool
+    content: str
+    session_id: str
+    error: Optional[str] = None
+
+
+class CSChatSessionItem(BaseModel):
+    session_id: str
+    title: str
+    message_count: int
+    created_at: Optional[str] = None
+    last_active: Optional[str] = None
+
+
+class CSChatSessionsResponse(BaseModel):
+    sessions: List[CSChatSessionItem] = Field(default_factory=list)
+
+
+class CSChatSessionMessagesResponse(BaseModel):
+    session_id: str
+    messages: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class CSHoldingCreateRequest(BaseModel):
+    item_name: str
+    good_id: Optional[int] = None
+    market_hash_name: str = ""
+    wear: str = ""
+    float_value: Optional[float] = Field(None, ge=0, le=1)
+    platform: Optional[str] = "yyyp"
+    quantity: int = Field(1, ge=1)
+    purchase_price: float = Field(0.0, ge=0)
+    market_price: Optional[float] = Field(None, ge=0)
+    note: str = ""
+
+
+class CSHoldingUpdateRequest(BaseModel):
+    item_name: Optional[str] = None
+    good_id: Optional[int] = None
+    market_hash_name: Optional[str] = None
+    wear: Optional[str] = None
+    float_value: Optional[float] = Field(None, ge=0, le=1)
+    platform: Optional[str] = None
+    quantity: Optional[int] = Field(None, ge=1)
+    purchase_price: Optional[float] = Field(None, ge=0)
+    market_price: Optional[float] = Field(None, ge=0)
+    note: Optional[str] = None
+
+
+class CSHoldingBulkCreateRequest(BaseModel):
+    items: List[CSHoldingCreateRequest] = Field(default_factory=list)
+
+
+class CSHoldingSummary(BaseModel):
+    item_count: int = 0
+    row_count: int = 0
+    total_market_value: Optional[float] = None
+    total_cost: float = 0.0
+    total_pnl: Optional[float] = None
+
+
+class CSHoldingItem(BaseModel):
+    id: int
+    good_id: Optional[int] = None
+    item_name: str
+    market_hash_name: str = ""
+    wear: str = ""
+    float_value: Optional[float] = None
+    platform: str = "yyyp"
+    quantity: int = 1
+    purchase_price: float = 0.0
+    market_price: Optional[float] = None
+    cost_total: float = 0.0
+    market_total: Optional[float] = None
+    pnl: Optional[float] = None
+    pnl_pct: Optional[float] = None
+    thumbnail_url: Optional[str] = None
+    note: Optional[str] = None
+    dedup_key: Optional[str] = None
+    import_batch_id: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class CSHoldingsPagination(BaseModel):
+    page: int = 1
+    page_size: int = 50
+    total: int = 0
+
+
+class CSHoldingsSnapshotResponse(BaseModel):
+    summary: CSHoldingSummary
+    items: List[CSHoldingItem] = Field(default_factory=list)
+    pagination: Optional[CSHoldingsPagination] = None
+
+
+class CSExtractedHoldingItem(BaseModel):
+    item_name: str = ""
+    weapon_name: str = ""
+    skin_name: str = ""
+    wear: str = ""
+    market_price: Optional[float] = None
+    purchase_price: Optional[float] = None
+    pnl: Optional[float] = None
+    confidence: str = "medium"
+    good_id: Optional[int] = None
+
+
+class CSHoldingsExtractResponse(BaseModel):
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    items: List[CSExtractedHoldingItem] = Field(default_factory=list)
+    raw_text: Optional[str] = None
+
+
+class CSHoldingDraftItem(BaseModel):
+    draft_id: str
+    source: Literal["manual", "vision", "csv"] = "manual"
+    item_name: str
+    wear: str = ""
+    float_value: Optional[float] = None
+    platform: str = "yyyp"
+    quantity: int = 1
+    purchase_price: float = 0.0
+    market_price: Optional[float] = None
+    good_id: Optional[int] = None
+    market_hash_name: str = ""
+    match_tier: str = "none"
+    match_confidence: str = "low"
+    match_score: float = 0.0
+    vision_confidence: str = "medium"
+    dedup_key: str = ""
+    duplicate_of: Optional[int] = None
+    checked: bool = True
+    candidates: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class CSHoldingsImportPreviewItem(BaseModel):
+    item_name: str
+    wear: str = ""
+    float_value: Optional[float] = Field(None, ge=0, le=1)
+    platform: Optional[str] = "yyyp"
+    quantity: int = Field(1, ge=1)
+    purchase_price: float = Field(0.0, ge=0)
+    market_price: Optional[float] = Field(None, ge=0)
+    good_id: Optional[int] = None
+    confidence: str = "medium"
+
+
+class CSHoldingsImportPreviewRequest(BaseModel):
+    source: Literal["manual", "vision", "csv"] = "manual"
+    items: List[CSHoldingsImportPreviewItem] = Field(default_factory=list)
+
+
+class CSHoldingsImportPreviewSummary(BaseModel):
+    draft_count: int = 0
+    duplicate_count: int = 0
+    low_confidence_count: int = 0
+    checked_count: int = 0
+
+
+class CSHoldingsImportPreviewResponse(BaseModel):
+    session_id: str
+    source: str
+    summary: CSHoldingsImportPreviewSummary
+    drafts: List[CSHoldingDraftItem] = Field(default_factory=list)
+    vision_summary: Optional[Dict[str, Any]] = None
+
+
+class CSHoldingsImportUpdateRequest(BaseModel):
+    session_id: str
+    drafts: List[CSHoldingDraftItem] = Field(default_factory=list)
+    rematch: bool = True
+
+
+class CSHoldingsImportCommitRequest(BaseModel):
+    session_id: str
+    draft_ids: Optional[List[str]] = None
+    skip_duplicates: bool = False
+
+
+class CSHoldingsImportCommitResponse(CSHoldingsSnapshotResponse):
+    batch_id: str
+    imported_count: int = 0
+    skipped_duplicates: int = 0
+
+
+class CSHoldingsRiskResponse(BaseModel):
+    as_of: str
+    platform: str = "all"
+    summary: Dict[str, Any] = Field(default_factory=dict)
+    thresholds: Dict[str, Any] = Field(default_factory=dict)
+    concentration: Dict[str, Any] = Field(default_factory=dict)
+    stop_loss: Dict[str, Any] = Field(default_factory=dict)
+    price_stale: Dict[str, Any] = Field(default_factory=dict)
+    platform_exposure: Dict[str, Any] = Field(default_factory=dict)
+    top_gainers: List[Dict[str, Any]] = Field(default_factory=list)
+    top_losers: List[Dict[str, Any]] = Field(default_factory=list)

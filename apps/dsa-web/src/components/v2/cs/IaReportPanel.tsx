@@ -1,5 +1,6 @@
 import type React from 'react';
-import { RotateCw } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { MessageSquareQuote, RotateCw } from 'lucide-react';
 import type { CsItemAnalyzeResponse } from '../../../types/cs';
 import { IaActionZones } from './IaActionZones';
 import { IaAiReport } from './IaAiReport';
@@ -42,15 +43,24 @@ export const IaReportPanel: React.FC<IaReportPanelProps> = ({
           <p className="ia-report-panel-kicker">分析报告</p>
           <h2 className="ia-report-panel-title">{data.itemName}</h2>
         </div>
-        <button
-          type="button"
-          className="ia-btn-secondary"
-          disabled={isAnalyzing}
-          onClick={onReanalyze}
-        >
-          <RotateCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
-          重新分析
-        </button>
+        <div className="ia-report-panel-actions flex flex-wrap gap-2">
+          <Link
+            to={`/chat?goodId=${data.goodId}&name=${encodeURIComponent(data.itemName)}&platform=${encodeURIComponent(data.platform)}`}
+            className="ia-btn-secondary inline-flex items-center gap-2 no-underline"
+          >
+            <MessageSquareQuote className="h-4 w-4" />
+            继续追问
+          </Link>
+          <button
+            type="button"
+            className="ia-btn-secondary"
+            disabled={isAnalyzing}
+            onClick={onReanalyze}
+          >
+            <RotateCw className={`h-4 w-4 ${isAnalyzing ? 'animate-spin' : ''}`} />
+            重新分析
+          </button>
+        </div>
       </div>
 
       {isAnalyzing ? (

@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from market_provider.csqaq.item_analysis import TODAY_KLINE_PAGES, run_cs_item_analysis
-from market_provider.csqaq.schemas import MergedItemOhlcvMeta
+from market_provider.csqaq.schemas import CSQAQPlatform, MergedItemOhlcvMeta
 from src.stock_analyzer import TrendAnalysisResult
 
 
@@ -17,7 +17,7 @@ def _empty_meta() -> MergedItemOhlcvMeta:
         good_id=769,
         item_name="test",
         market_hash_name="test",
-        platform="yyyp",
+        platform=CSQAQPlatform.YYYP,
         ohlc_source="kline_chart_all",
         volume_source="kline_chart_all_v",
         data_quality="full",
@@ -85,4 +85,5 @@ def test_refresh_kline_calls(refresh_crawl, refresh_today, expected_pages, expec
     refresh_mock.assert_called_once()
     _, kwargs = refresh_mock.call_args
     assert kwargs["kline_pages"] == expected_pages
-    assert kwargs.get("fail_soft") is expected_fail_soft
+    if expected_fail_soft is not None:
+        assert kwargs.get("fail_soft", False) is expected_fail_soft

@@ -34,6 +34,11 @@ const ALERT_TYPE_FILTER_OPTIONS = [
   { value: 'portfolio_concentration', label: '组合集中度' },
   { value: 'portfolio_drawdown', label: '组合回撤' },
   { value: 'portfolio_price_stale', label: '组合价格状态' },
+  { value: 'cs_price_cross', label: 'CS 价格突破' },
+  { value: 'cs_pnl_threshold', label: 'CS 盈亏阈值' },
+  { value: 'cs_price_stale', label: 'CS 价格状态' },
+  { value: 'cs_concentration', label: 'CS 持仓集中度' },
+  { value: 'cs_stop_loss', label: 'CS 持仓止损' },
   { value: 'market_light_status', label: '大盘红绿灯状态' },
   { value: 'market_light_score_drop', label: '大盘红绿灯分数下降' },
 ];
@@ -51,6 +56,11 @@ const typeLabel: Record<AlertType, string> = {
   portfolio_concentration: '组合集中度',
   portfolio_drawdown: '组合回撤',
   portfolio_price_stale: '组合价格状态',
+  cs_price_cross: 'CS 价格突破',
+  cs_pnl_threshold: 'CS 盈亏阈值',
+  cs_price_stale: 'CS 价格状态',
+  cs_concentration: 'CS 持仓集中度',
+  cs_stop_loss: 'CS 持仓止损',
   market_light_status: '大盘红绿灯状态',
   market_light_score_drop: '大盘红绿灯分数下降',
 };
@@ -66,6 +76,8 @@ const scopeLabel: Record<string, string> = {
   watchlist: '自选股',
   portfolio_holdings: '持仓标的',
   portfolio_account: '持仓账户',
+  cs_holdings: 'CS 饰品持仓',
+  cs_item: 'CS 单饰品',
   market: '大盘市场',
 };
 
@@ -112,9 +124,17 @@ function formatParameters(rule: AlertRuleItem): string {
     }
     return `KDJ(${rule.parameters.period ?? '--'},${rule.parameters.kPeriod ?? '--'},${rule.parameters.dPeriod ?? '--'}) ${direction}`;
   }
-  if (rule.alertType === 'portfolio_stop_loss') {
+  if (rule.alertType === 'portfolio_stop_loss' || rule.alertType === 'cs_stop_loss') {
     return rule.parameters.mode === 'breach' ? '已触发止损' : '接近止损';
   }
+  if (rule.alertType === 'cs_price_cross') {
+    return `${rule.parameters.direction === 'below' ? '下破' : '上破'} ${rule.parameters.price ?? '--'} (${rule.parameters.platform ?? 'yyyp'})`;
+  }
+  if (rule.alertType === 'cs_pnl_threshold') {
+    return `${rule.parameters.direction === 'gain' ? '盈利' : '亏损'} ${rule.parameters.thresholdPct ?? '--'}%`;
+  }
+  if (rule.alertType === 'cs_concentration') return 'top_weight_pct';
+  if (rule.alertType === 'cs_price_stale') return 'missing good_id / market_price';
   if (rule.alertType === 'portfolio_concentration') return 'top_weight_pct';
   if (rule.alertType === 'portfolio_drawdown') return 'max_drawdown_pct';
   if (rule.alertType === 'portfolio_price_stale') return 'price_stale / price_available';
@@ -130,6 +150,12 @@ function formatTarget(rule: AlertRuleItem): string {
   if (rule.targetScope === 'watchlist') return 'default';
   if (rule.targetScope === 'portfolio_account' || rule.targetScope === 'portfolio_holdings') {
     return rule.target === 'all' ? '全部账户' : `账户 ${rule.target}`;
+  }
+  if (rule.targetScope === 'cs_holdings') {
+    return rule.target === 'all' ? '全部 CS 持仓' : `CS 平台 ${rule.target}`;
+  }
+  if (rule.targetScope === 'cs_item') {
+    return `good_id ${rule.target}`;
   }
   return rule.target;
 }

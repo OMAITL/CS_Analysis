@@ -29,7 +29,7 @@ from src.services.image_stock_extractor import (
     _parse_codes_from_text,
     _parse_items_from_text,
     extract_stock_codes_from_image,
-    VISION_API_TIMEOUT,
+    resolve_vision_api_timeout,
 )
 from src.config import Config
 
@@ -173,8 +173,9 @@ class TestCallLitellmVision:
             assert result == '["600519"]'
             mock_comp.assert_called_once()
             kwargs = mock_comp.call_args[1]
-            assert kwargs["timeout"] == VISION_API_TIMEOUT
-            assert kwargs["max_tokens"] == 1024
+            assert kwargs["timeout"] == resolve_vision_api_timeout()
+            assert kwargs["num_retries"] == 0
+            assert kwargs["max_tokens"] == 4096
 
     def test_openai_model_uses_api_base_and_aihubmix_headers(self):
         cfg = _cfg(
@@ -189,6 +190,30 @@ class TestCallLitellmVision:
             kwargs = mock_comp.call_args[1]
             assert kwargs["api_base"] == "https://aihubmix.com/v1"
             assert kwargs["extra_headers"]["APP-Code"] == "GPIJ3886"
+
+    def test_channel_model_list_uses_deployment_api_base(self):
+        cfg = _cfg(
+            openai_vision_model=None,
+            litellm_model="openai/Doubao-Seed-2.0-lite",
+            openai_api_keys=[],
+        )
+        cfg.llm_model_list = [
+            {
+                "model_name": "openai/Doubao-Seed-2.0-lite",
+                "litellm_params": {
+                    "model": "openai/Doubao-Seed-2.0-lite",
+                    "api_key": _OPENAI_KEY,
+                    "api_base": "https://open-gateway.anspire.cn/v6",
+                },
+            }
+        ]
+        with patch("src.services.image_stock_extractor.get_config", return_value=cfg), \
+             patch("src.services.image_stock_extractor.litellm.completion",
+                   return_value=self._good_response()) as mock_comp:
+            _call_litellm_vision("b64", "image/jpeg")
+            kwargs = mock_comp.call_args[1]
+            assert kwargs["api_base"] == "https://open-gateway.anspire.cn/v6"
+            assert kwargs["api_key"] == _OPENAI_KEY
 
     def test_raises_when_model_not_configured(self):
         cfg = _cfg(openai_vision_model=None, litellm_model="", gemini_api_keys=[], anthropic_api_keys=[], openai_api_keys=[])
@@ -332,5 +357,5 @@ class TestExtractStockCodesFromImage:
         with patch("src.services.image_stock_extractor.get_config", return_value=cfg), \
              patch("src.services.image_stock_extractor.litellm.completion",
                    side_effect=RuntimeError("network down")):
-            with pytest.raises(ValueError, match="Vision API 调用失败"):
+            with pytest.raises(ValueError, match="Vision API"):
                 extract_stock_codes_from_image(jpeg, "image/jpeg")

@@ -39,10 +39,79 @@ class CSItemAnalysisContext:
     event_intel: List[Dict[str, Any]] = field(default_factory=list)
 
 
+def resolve_item_goods_info(
+    client: CSQAQClient,
+    good_id: int,
+    *,
+    fallback_name: str = "",
+    fallback_mhn: str = "",
+) -> Dict[str, Any]:
+    """
+    Resolve item display fields for analysis.
+
+    Order: CSQAQ Open API → local ``cs_item_catalog`` → caller fallback.
+    Used when API token/IP is unavailable but crawler K-line or catalog exists.
+    """
+    try:
+        detail = client.get_item_good(good_id)
+        goods = dict(detail.get("goods_info") or {})
+        if goods.get("name") or goods.get("market_hash_name"):
+            return goods
+    except Exception as exc:
+        logger.warning("get_item_good failed for good_id=%s: %s", good_id, exc)
+
+    try:
+        from src.repositories.cs_item_catalog_repo import CSItemCatalogRepository
+
+        catalog_row = CSItemCatalogRepository().get_by_good_id(int(good_id))
+        if catalog_row is not None:
+            return {
+                "name": str(catalog_row.name),
+                "market_hash_name": str(catalog_row.market_hash_name or catalog_row.name),
+            }
+    except Exception as exc:
+        logger.debug("catalog lookup failed for good_id=%s: %s", good_id, exc)
+
+    name = (fallback_name or str(good_id)).strip()
+    mhn = (fallback_mhn or fallback_name or str(good_id)).strip()
+    return {"name": name, "market_hash_name": mhn}
+
+
 def fetch_item_snapshot(client: CSQAQClient, good_id: int) -> Dict[str, Any]:
+    """Full CSQAQ item snapshot (prices, listing counts). Raises when API unavailable."""
     detail = client.get_item_good(good_id)
     goods = dict(detail.get("goods_info") or {})
     return goods
+
+
+def _build_degraded_snapshot(
+    *,
+    goods: Dict[str, Any],
+    entry: GoodIdEntry,
+    trend: TrendAnalysisResult,
+    ohlcv_rows: List[Dict[str, Any]],
+    meta: MergedItemOhlcvMeta,
+    api_error: Optional[str] = None,
+) -> Dict[str, Any]:
+    snapshot = dict(goods)
+    snapshot.setdefault("name", entry.name)
+    snapshot.setdefault("market_hash_name", entry.market_hash_name)
+    if api_error:
+        snapshot["api_snapshot_error"] = api_error
+    snapshot["data_sources"] = []
+    if int(meta.crawl_rows or 0) > 0:
+        snapshot["data_sources"].append("crawl_kline")
+    if int(meta.api_rows or 0) > 0:
+        snapshot["data_sources"].append("csqaq_api")
+    if not snapshot["data_sources"]:
+        snapshot["data_sources"].append("catalog_or_fallback")
+
+    current_price = getattr(trend, "current_price", None)
+    if current_price is None and ohlcv_rows:
+        current_price = ohlcv_rows[-1].get("close")
+    if current_price is not None and snapshot.get("yyyp_sell_price") is None:
+        snapshot["yyyp_sell_price"] = current_price
+    return snapshot
 
 
 def refresh_item_kline_crawl(
@@ -60,7 +129,7 @@ def refresh_item_kline_crawl(
     and ``0`` is returned instead of raising.
     """
     try:
-        goods = fetch_item_snapshot(client, good_id)
+        goods = resolve_item_goods_info(client, good_id)
         browser = CSQAQBrowserCrawler()
         frame = browser.crawl_item_kline_volume(
             good_id,
@@ -97,6 +166,8 @@ def run_cs_item_analysis(
     kline_pages: int = 5,
     store_result: bool = True,
     ohlcv_tail_rows: int = 20,
+    fallback_name: str = "",
+    fallback_mhn: str = "",
 ) -> CSItemAnalysisContext:
     """
     Build fused OHLCV, run trend analysis, return report-ready context.
@@ -110,12 +181,18 @@ def run_cs_item_analysis(
     platform_name = resolved.name.lower()
 
     entry: GoodIdEntry
+    goods: Dict[str, Any] = {}
     if good_id is not None:
-        goods = fetch_item_snapshot(api, int(good_id))
+        goods = resolve_item_goods_info(
+            api,
+            int(good_id),
+            fallback_name=fallback_name,
+            fallback_mhn=fallback_mhn,
+        )
         entry = GoodIdEntry(
             id=int(good_id),
-            name=str(goods.get("name") or good_id),
-            market_hash_name=str(goods.get("market_hash_name") or good_id),
+            name=str(goods.get("name") or fallback_name or good_id),
+            market_hash_name=str(goods.get("market_hash_name") or fallback_mhn or fallback_name or good_id),
         )
     elif item_query:
         entry = api.resolve_good_id(item_query, prefer_market_hash_name=item_query)
@@ -163,7 +240,23 @@ def run_cs_item_analysis(
             row["date"] = row["date"].isoformat()
     ohlcv_tail = ohlcv_rows[-max(1, ohlcv_tail_rows) :]
 
-    snapshot = fetch_item_snapshot(api, int(good_id))
+    try:
+        snapshot = fetch_item_snapshot(api, int(good_id))
+    except Exception as exc:
+        logger.info(
+            "CS item snapshot degraded for good_id=%s (crawl_rows=%s): %s",
+            good_id,
+            meta.crawl_rows,
+            exc,
+        )
+        snapshot = _build_degraded_snapshot(
+            goods=goods,
+            entry=entry,
+            trend=trend,
+            ohlcv_rows=ohlcv_rows,
+            meta=meta,
+            api_error=str(exc),
+        )
     return CSItemAnalysisContext(
         good_id=int(good_id),
         item_name=entry.name,

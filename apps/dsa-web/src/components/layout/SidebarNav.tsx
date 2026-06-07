@@ -4,6 +4,7 @@ import { BarChart3, LogOut } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { useAgentChatStore } from '../../stores/agentChatStore';
+import { useCsChatStore } from '../../stores/csChatStore';
 import { cn } from '../../utils/cn';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { StatusDot } from '../common/StatusDot';
@@ -19,7 +20,9 @@ const NAV_ITEMS = APP_NAV_ITEMS;
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNavigate }) => {
   const { authEnabled, logout } = useAuth();
-  const completionBadge = useAgentChatStore((state) => state.completionBadge);
+  const csCompletionBadge = useCsChatStore((state) => state.completionBadge);
+  const agentCompletionBadge = useAgentChatStore((state) => state.completionBadge);
+  const completionBadge = csCompletionBadge || agentCompletionBadge;
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   return (
@@ -73,7 +76,7 @@ export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNav
                       'absolute right-3 border-2 border-background shadow-[0_0_10px_var(--nav-indicator-shadow)]',
                       collapsed ? 'right-2 top-2' : ''
                     )}
-                    aria-label="问股有新消息"
+                    aria-label="问饰品有新消息"
                   />
                 ) : null}
               </>

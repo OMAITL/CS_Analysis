@@ -107,7 +107,9 @@ class AlertWorker:
             logger.warning("[AlertWorker] Failed to load runtime config: %s", exc)
             return stats
 
-        if not getattr(config, "agent_event_monitor_enabled", False):
+        if not getattr(config, "agent_event_monitor_enabled", False) and not getattr(
+            config, "cs_holdings_auto_alerts_enabled", False
+        ):
             logger.debug("[AlertWorker] Event monitor disabled; skipping")
             return stats
 

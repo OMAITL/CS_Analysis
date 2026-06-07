@@ -9,7 +9,7 @@ from typing import Optional, Tuple, Union
 import pandas as pd
 
 from crawlers.csqaq.store import VolumeCrawlStore
-from market_provider.csqaq.client import CSQAQClient, resolve_price_platform
+from market_provider.csqaq.client import CSQAQAPIError, CSQAQClient, resolve_price_platform
 from market_provider.csqaq.ohlcv_adapter import chart_series_to_daily_ohlcv
 from market_provider.csqaq.schemas import (
     CSQAQPlatform,
@@ -188,7 +188,14 @@ def build_item_ohlcv_from_api(
     period: int = 365,
 ) -> Tuple[pd.DataFrame, MergedVolumeSource]:
     resolved = resolve_price_platform(platform)
-    charts = client.get_item_daily_ohlcv_inputs(good_id, price_platform=resolved, period=period)
+    try:
+        charts = client.get_item_daily_ohlcv_inputs(good_id, price_platform=resolved, period=period)
+    except CSQAQAPIError as exc:
+        logger.warning("CSQAQ API OHLCV unavailable for good_id=%s (code=%s)", good_id, exc.code)
+        return pd.DataFrame(columns=STANDARD_COLUMNS), "none"
+    except Exception as exc:
+        logger.warning("CSQAQ API OHLCV request failed for good_id=%s: %s", good_id, exc)
+        return pd.DataFrame(columns=STANDARD_COLUMNS), "none"
     volume_series = charts.get("volume")
     frame, meta = chart_series_to_daily_ohlcv(
         charts["price"],

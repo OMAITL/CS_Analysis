@@ -125,6 +125,8 @@ class CSItemService:
         kline_pages: int = 5,
         include_report: bool = True,
         skills: Optional[List[str]] = None,
+        fallback_name: str = "",
+        fallback_mhn: str = "",
     ) -> Dict[str, Any]:
         from src.services.cs_skill_prompt import normalize_cs_skill_ids
         active_skills = normalize_cs_skill_ids(skills)
@@ -137,6 +139,8 @@ class CSItemService:
             refresh_crawl=refresh_crawl,
             refresh_today=refresh_today,
             kline_pages=kline_pages,
+            fallback_name=fallback_name,
+            fallback_mhn=fallback_mhn,
         )
 
         event_context, event_items = fetch_cs_event_intel(
@@ -195,6 +199,27 @@ class CSItemService:
         }
 
     def search_items(
+        self,
+        search: str,
+        *,
+        page_index: int = 1,
+        page_size: int = 20,
+    ) -> Dict[str, Any]:
+        """Search CS items: local catalog first, CSQAQ fallback."""
+        term = (search or "").strip()
+        if not term:
+            raise ValueError("search is required")
+        from src.services.cs_item_catalog_service import CSItemCatalogService
+
+        payload = CSItemCatalogService().search_hybrid(
+            term,
+            page_index=page_index,
+            page_size=page_size,
+        )
+        payload.pop("source", None)
+        return payload
+
+    def search_items_remote(
         self,
         search: str,
         *,

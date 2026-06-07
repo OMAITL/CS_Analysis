@@ -88,7 +88,7 @@ const HomePage: React.FC = () => {
 
   return (
     <div className="ia-v2-root flex min-h-0 flex-1 flex-col" data-testid="home-dashboard">
-      <div className="ia-v2-shell">
+      <div className={`ia-v2-shell${historyOpen ? ' ia-v2-shell-history-open' : ''}`}>
         <IaHistoryDrawer
           open={historyOpen}
           onToggle={() => setHistoryOpen((prev) => !prev)}

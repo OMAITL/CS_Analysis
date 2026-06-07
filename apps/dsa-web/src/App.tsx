@@ -9,6 +9,7 @@ import {
 } from './components/layout/RouteBoundary';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { useAgentChatStore } from './stores/agentChatStore';
+import { useCsChatStore } from './stores/csChatStore';
 import './App.css';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
@@ -18,10 +19,11 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 const ChatPage = lazy(() => import('./pages/ChatPage'));
+const CsChatPage = lazy(() => import('./pages/CsChatPage'));
 const PortfolioPage = lazy(() => import('./pages/PortfolioPage'));
+const CsHoldingsPage = lazy(() => import('./pages/CsHoldingsPage'));
 const AlertsPage = lazy(() => import('./pages/AlertsPage'));
 const CsItemPage = lazy(() => import('./pages/CsItemPage'));
-const ChatPageV2 = lazy(() => import('./pages/v2/ChatPageV2'));
 
 const AppContent: React.FC = () => {
   const location = useLocation();
@@ -29,6 +31,10 @@ const AppContent: React.FC = () => {
 
   useEffect(() => {
     useAgentChatStore.getState().setCurrentRoute(location.pathname);
+    useCsChatStore.getState().setCurrentRoute(location.pathname);
+    if (location.pathname === '/chat') {
+      useCsChatStore.getState().clearCompletionBadge();
+    }
   }, [location.pathname]);
 
   if (isLoading) {
@@ -79,10 +85,12 @@ const AppContent: React.FC = () => {
       >
         <Route path="/" element={<HomePage />} />
         <Route path="/preview" element={<Navigate to="/" replace />} />
-        <Route path="/preview/chat" element={<ChatPageV2 />} />
+        <Route path="/preview/chat" element={<Navigate to="/chat" replace />} />
         <Route path="/stocks" element={<StockAnalysisPage />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/portfolio" element={<PortfolioPage />} />
+        <Route path="/stocks/chat" element={<ChatPage />} />
+        <Route path="/chat" element={<CsChatPage />} />
+        <Route path="/stocks/portfolio" element={<PortfolioPage />} />
+        <Route path="/portfolio" element={<CsHoldingsPage />} />
         <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/cs" element={<CsItemPage />} />

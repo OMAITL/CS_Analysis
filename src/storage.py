@@ -596,6 +596,76 @@ class PortfolioFxRate(Base):
     )
 
 
+class CSHolding(Base):
+    """User CS2 skin inventory row (purchase cost + market valuation)."""
+
+    __tablename__ = 'cs_holdings'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    good_id = Column(Integer, index=True)
+    item_name = Column(String(256), nullable=False)
+    market_hash_name = Column(String(512), default='')
+    wear = Column(String(64), default='')
+    float_value = Column(Float)
+    platform = Column(String(16), nullable=False, default='yyyp', index=True)
+    quantity = Column(Integer, nullable=False, default=1)
+    purchase_price = Column(Float, nullable=False, default=0.0)
+    market_price = Column(Float)
+    thumbnail_url = Column(String(512))
+    note = Column(String(255))
+    dedup_key = Column(String(64), index=True)
+    import_batch_id = Column(String(36), index=True)
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+
+
+class CSHoldingImportBatch(Base):
+    """Import batch metadata for CS holdings (commit / rollback)."""
+
+    __tablename__ = 'cs_holding_import_batches'
+
+    id = Column(String(36), primary_key=True)
+    source = Column(String(16), nullable=False, default='manual')
+    item_count = Column(Integer, nullable=False, default=0)
+    status = Column(String(16), nullable=False, default='pending', index=True)
+    snapshot_json = Column(Text, nullable=False, default='')
+    created_at = Column(DateTime, default=datetime.now, index=True)
+    committed_at = Column(DateTime)
+
+
+class CSItemCatalog(Base):
+    """Local mirror of CSQAQ item catalog (good_id identity rows)."""
+
+    __tablename__ = 'cs_item_catalog'
+
+    good_id = Column(Integer, primary_key=True)
+    name = Column(String(512), nullable=False, index=True)
+    market_hash_name = Column(String(512), nullable=False, default='', index=True)
+    search_blob = Column(Text, nullable=False, default='')
+    item_type = Column(String(64), default='')
+    first_seen_at = Column(DateTime, default=datetime.now, index=True)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now, index=True)
+    last_synced_at = Column(DateTime, default=datetime.now, index=True)
+
+
+class CSItemCatalogState(Base):
+    """Singleton sync checkpoint for CS item catalog."""
+
+    __tablename__ = 'cs_item_catalog_state'
+
+    id = Column(Integer, primary_key=True, default=1)
+    item_count = Column(Integer, nullable=False, default=0)
+    api_total = Column(Integer, nullable=False, default=0)
+    last_full_sync_at = Column(DateTime)
+    last_incremental_sync_at = Column(DateTime)
+    last_sync_status = Column(String(32), nullable=False, default='idle')
+    last_sync_mode = Column(String(32), default='')
+    checkpoint_page = Column(Integer, nullable=False, default=0)
+    checkpoint_mode = Column(String(32), default='')
+    last_error = Column(Text, default='')
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+
 class ConversationMessage(Base):
     """
     Agent 对话历史记录表
@@ -817,6 +887,7 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
 
             # 创建所有表
             Base.metadata.create_all(self._engine)
+            self._migrate_cs_holdings_schema()
 
             self._initialized = True
             logger.info(f"数据库初始化完成: {db_url}")
@@ -834,6 +905,32 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
             self._SessionLocal = None
             self.__class__._instance = None
             raise
+
+    def _migrate_cs_holdings_schema(self) -> None:
+        """Add CS holdings columns on existing SQLite databases."""
+        if not self._is_sqlite_engine:
+            return
+        column_specs = {
+            "cs_holdings": {
+                "float_value": "FLOAT",
+                "dedup_key": "VARCHAR(64)",
+                "import_batch_id": "VARCHAR(36)",
+            },
+        }
+        try:
+            with self._engine.begin() as conn:
+                for table, columns in column_specs.items():
+                    existing = {
+                        row[1]
+                        for row in conn.exec_driver_sql(f"PRAGMA table_info({table})").fetchall()
+                    }
+                    for name, col_type in columns.items():
+                        if name in existing:
+                            continue
+                        conn.exec_driver_sql(f"ALTER TABLE {table} ADD COLUMN {name} {col_type}")
+                        logger.info("Migrated %s: added column %s", table, name)
+        except Exception as exc:
+            logger.warning("CS holdings schema migration skipped or partial: %s", exc)
 
     @classmethod
     def get_instance(cls) -> 'DatabaseManager':

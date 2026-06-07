@@ -120,6 +120,43 @@ python tools/probe_cs_event_intel.py --good-id 769 -v
 - 支持中文名、英文名、`good_id`  
 - 模糊名匹配 **多个** 款式时，必须从下拉选择一条再分析  
 - 唯一匹配时会自动锁定 `good_id`  
+- **本地商品库**：首次使用建议执行全量同步（见下文）；同步后搜索优先走本地 SQLite，未命中时再请求 CSQAQ 并写入缓存
+
+### 饰品商品库同步（CSQAQ `get_page_list`）
+
+将 CSQAQ 分页商品目录镜像到主库 `DATABASE_PATH` 的 `cs_item_catalog` 表，减少每次输入时的远程搜索。
+
+**首次全量同步**（需 `CSQAQ_API_TOKEN` 与白名单；全量可能耗时较久，受 1 req/s 限速影响）：
+
+```bash
+python scripts/sync_cs_item_catalog.py --mode full
+```
+
+**日常增量同步**（刷新首页 + 尾部新页 + 名称变更）：
+
+```bash
+python scripts/sync_cs_item_catalog.py --mode incremental
+```
+
+中断的全量同步可 `--resume` 续跑。查看状态：
+
+```bash
+python scripts/sync_cs_item_catalog.py --status
+```
+
+或通过 API：
+
+- `GET /api/v1/cs/items/catalog/status`
+- `POST /api/v1/cs/items/catalog/sync?mode=incremental`
+
+相关环境变量（可选）：
+
+| 变量 | 默认 | 说明 |
+| --- | --- | --- |
+| `CS_ITEM_CATALOG_LOCAL_SEARCH` | `true` | 本地有数据时优先本地搜索 |
+| `CS_ITEM_CATALOG_SYNC_PAGE_SIZE` | `100` | 同步分页大小（最大 500） |
+| `CS_ITEM_CATALOG_INCREMENTAL_TAIL_PAGES` | `3` | 增量时刷新末尾页数 |
+| `CS_ITEM_CATALOG_UPSERT_ON_REMOTE` | `true` | 远程搜索命中时写入本地缓存 |
 
 ### 策略 Skill
 
@@ -127,10 +164,48 @@ python tools/probe_cs_event_intel.py --good-id 769 -v
 - 列表来自 `GET /api/v1/cs/items/skills`  
 - CS 适配 YAML：`strategies/cs/`；通用技术 skill：`strategies/*.yaml`  
 
-### 问股
+### 饰品持仓
 
-- `/chat` — 原版多轮对话  
-- `/preview/chat` — 简化对话 UI +「高级分析」折叠 Skill  
+- `/portfolio` — 手动录入或上传库存 App 截图导入；支持 **导入预览**（低置信标红、可改 name/wear/float）、三层饰品匹配、去重提示与确认 commit；页面展示 **持仓风险报告**（集中度、止损接近、价格缺失、平台分布）
+- API：
+  - `GET /api/v1/cs/holdings/snapshot` — 持仓快照（可选 `page`/`page_size`/`platform` 分页）
+  - `GET /api/v1/cs/holdings/risk` — 持仓风险报告（`refresh_prices`、`platform` 可选）
+  - `POST /api/v1/cs/holdings/import/preview` — 手动/CSV 条目预览
+  - `POST /api/v1/cs/holdings/import/preview/image` — 截图 Vision 预览
+  - `POST /api/v1/cs/holdings/import/update` — 更新 draft 并重匹配
+  - `POST /api/v1/cs/holdings/import/commit` — 确认入库（`skip_duplicates` 跳过重复）
+  - 遗留：`POST /api/v1/cs/holdings/bulk`、`/extract-from-image`
+- `/stocks/portfolio` — 遗留股票持仓账本
+
+**智能层：价格告警**
+
+默认 **自动开启**（`CS_HOLDINGS_AUTO_ALERTS_ENABLED=true`），无需手动在 `/alerts` 建规则：
+
+- 导入/新增/修改/删除持仓后，系统自动同步告警规则（`source=cs_auto`）
+- 每条有 `good_id` 和购入价的持仓，自动生成：
+  - **止盈**：市价上破 `购入价 × (1 + 止盈%)`（默认 +20%）
+  - **止损**：市价下破 `购入价 × (1 - 止损%)`（默认 -10%）
+- 组合级自动监控：止损接近、集中度、价格缺失
+
+Web 服务（`uvicorn server:app`）启动后会 **后台轮询** 评估告警（默认每 5 分钟，可配 `AGENT_EVENT_MONITOR_INTERVAL_MINUTES`）。触发后写入告警历史，并按通知配置推送。
+
+也可在 `/alerts` 手动追加自定义规则；自动规则可在告警列表中识别（来源 `cs_auto`）。
+
+### 问饰品
+
+- `/chat` — CS 饰品多轮问答（做盘识别、高位出货、平台价差、趋势解读等）；会话 API：`/api/v1/cs/chat/*`
+- `/stocks/chat` — 遗留股票问股（需 `AGENT_MODE=true`）
+
+**作答范围（自动识别）**
+
+| 范围 | 典型问法 | 注入数据 |
+| --- | --- | --- |
+| `market` | 「哪些饰品可能做盘」「最近哪些刀型热度上升」 | 指数/子板块 + **watchlist 抽样扫描**（品类种子饰品技术打分后列出具体名称；非全市场穷尽） |
+| `portfolio` | 「我持有的要不要出货」 | `/portfolio` 持仓快照 |
+| `single_item` | 从工作台追问某一饰品 | 该饰品融合行情 + 历史分析摘要 |
+| `general` | 套利方法论、量价解读等 | 以 Skill 框架为主 |
+
+即使首页/workflow 已关联某一饰品，**全市场类问题**也不会被强制收窄到该单品。
 
 ## 命令行工作流
 

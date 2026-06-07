@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+- [新功能] CS 自动告警：持仓变更后自动同步止盈/止损到价规则与组合风险监控；Web 服务启动后后台轮询评估，无需手动建规则。
+- [新功能] CS 智能层：持仓风险报告（`GET /api/v1/cs/holdings/risk`）与 CS 价格/盈亏/集中度/止损告警（接入告警中心 `cs_holdings`/`cs_item` scope）。
+- [新功能] CS 饰品持仓导入闭环：Draft 预览、三层 Match Engine、去重检测、确认后 commit；新增 API `/api/v1/cs/holdings/import/*`。
+- [修复] CS 截图导入 Vision 调用未走 `LLM_CHANNELS` 网关导致连接超时；并优化超时重试与 504 错误提示。
+- [修复] 手套/★饰品名无法匹配 good_id：增强 `|` 分隔名与 ★ 前缀解析，刷新市价时自动补全缺失 good_id。
+- [改进] 问饰品改为与问股相同的 ReAct Agent 模式：LLM 通过 tool calling 调用 `search_cs_item` / `analyze_cs_item` 等 CS 专用工具，不再使用 Narrator 单轮解释管线。
+- [修复] 问饰品对话框提及饰品名时未识别：`request_context` 历史 good_id 不再覆盖消息内新饰品；候选词按 specificity 排序；支持紧凑/刀型饰品名写法。
+- [改进] 问饰品按问题自动区分作答范围：`market` 注入指数/子板块数据，`portfolio` 注入持仓快照，`single_item` 注入关联饰品行情；全市场问法不再被首页关联单品带偏。
+- [改进] 问饰品全市场类问题增加 `watchlist` 抽样扫描：品类种子 + 技术可疑度/热度排序，回答须优先列出具体饰品名与信号，避免仅输出空泛框架。
+- [修复] 问饰品做盘类追问禁止 LLM 捏造饰品：预生成候选表 + `authorized_items` 白名单 + CSQAQ 校验全称；追问「还有别的做盘目标」纳入 market 范围并重扫。
+- [改进] 问饰品统一「先结论、后依据」回答结构；单品追问优先引用 `trend` 快照，禁止开篇大段强调 API 401。
+- [修复] CSQAQ Open API 401 时分析管线回退爬虫 K 线 + 本地商品库，不再因 `get_item_good` 失败而整段分析中断。
+- [新功能] 问饰品五层架构：Entity Resolver（消息识别饰品+意图）→ Session Memory（会话绑定 good_id）→ ItemDataProvider → Skill Engine（做盘/趋势/风险代码分析）→ LLM Narrator（只解释结构化结论）。
+- [新功能] 问饰品遇到本地商品库未收录的饰品名：自动 CSQAQ 检索并 upsert 商品库；解析到 good_id 后若缺 K 线则自动 Playwright 爬取成交量/价格历史再分析。
+- [修复] Open API 401 时通过 csqaq.com 浏览器会话检索 good_id；支持「M4A1闪回」等无空格紧凑饰品名解析。
+- [改进] 饰品持仓页改用系统 StatCard / SectionCard / Button 等 C 端组件，与首页、问饰品视觉一致。
+- [新功能] `/chat` 替换为 CS 饰品多轮问答（做盘识别、高位出货、平台价差等）；新增 `/api/v1/cs/chat/stream`；原股票问股保留在 `/stocks/chat`。
+- [修复] CS 搜索 CSQAQ 401 时返回 502 并提示白名单/Token；前端不再将此类错误误判为「本地 API 未启动」。
 - [文档] 重写 README、文档中心、CS 使用指南、FAQ、部署指南；股票长文档标注为遗留，默认文档路径改为 CS 饰品分析。
 - [改进] CS 首页正式替换为 Agent 工作台 UI（左任务下发 / 右分析报告）；`/preview` 重定向至 `/`；组件见 `components/v2/cs/`。
 - [改进] 饰品助手 v2 预览改为左右分栏：左侧任务下发、右侧分析报告；移除流水线动画；空报告区展示示例与最近分析。

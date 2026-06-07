@@ -39,12 +39,19 @@ export const TopNav: React.FC<TopNavProps> = ({ onOpenMobileMenu }) => {
             to="/"
             end
             className="flex shrink-0 items-center gap-2 rounded-xl px-1 py-1 transition-colors hover:bg-hover"
-            aria-label="DSA 首页"
+            aria-label="饰品投资分析 Agent 首页"
           >
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary-gradient text-[hsl(var(--primary-foreground))] shadow-[0_8px_20px_var(--nav-brand-shadow)]">
               <BarChart3 className="h-4 w-4" />
             </div>
-            <span className="hidden text-sm font-semibold text-foreground sm:inline">DSA</span>
+            <div className="hidden min-w-0 sm:block">
+              <p className="truncate text-[0.625rem] font-medium uppercase leading-none tracking-[0.12em] text-secondary-text">
+                Multi-Agent Workbench
+              </p>
+              <p className="truncate text-sm font-semibold leading-tight text-foreground">
+                饰品投资分析 Agent
+              </p>
+            </div>
           </NavLink>
 
           <nav
@@ -82,7 +89,7 @@ export const TopNav: React.FC<TopNavProps> = ({ onOpenMobileMenu }) => {
                         tone="info"
                         data-testid="chat-completion-badge"
                         className="border-2 border-background"
-                        aria-label="问股有新消息"
+                        aria-label="问饰品有新消息"
                       />
                     ) : null}
                   </>

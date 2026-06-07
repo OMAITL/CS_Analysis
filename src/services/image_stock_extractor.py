@@ -13,13 +13,14 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import random
 import re
 import sys
 import time
 from typing import List, Optional, Tuple
 
-from src.config import Config, get_config
+from src.config import Config, extra_litellm_params, get_api_keys_for_model, get_config
 
 logger = logging.getLogger(__name__)
 
@@ -61,7 +62,31 @@ _FAKE_CODES = frozenset({"CODE", "NAME", "HIGH", "LOW", "MEDIUM", "CONFIDENCE", 
 
 ALLOWED_MIME = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 MAX_SIZE_BYTES = 5 * 1024 * 1024  # 5MB
-VISION_API_TIMEOUT = 60  # seconds; avoid long blocks on network/API issues
+VISION_API_TIMEOUT = 60  # default seconds; override via VISION_API_TIMEOUT env
+
+
+def resolve_vision_api_timeout() -> int:
+    raw = (os.getenv("VISION_API_TIMEOUT") or "").strip()
+    if not raw:
+        return VISION_API_TIMEOUT
+    try:
+        return max(15, min(int(raw), 180))
+    except ValueError:
+        return VISION_API_TIMEOUT
+
+
+def format_vision_api_error(exc: Exception) -> str:
+    err = f"{type(exc).__name__}: {exc}".lower()
+    if "timeout" in err or "timed out" in err or "10060" in err:
+        return (
+            "Vision API 连接或响应超时。请检查 VISION_MODEL、API Key、OPENAI_BASE_URL 与网络/代理；"
+            "也可先改用手动录入。"
+        )
+    if "connect" in err or "connection" in err or "network" in err:
+        return (
+            "无法连接 Vision API 服务。请确认 OPENAI_BASE_URL 可达、代理已开启，或更换 VISION_MODEL 提供商。"
+        )
+    return f"Vision API 调用失败，请检查 API Key 与网络: {exc}"
 
 # Magic bytes for server-side MIME validation (client Content-Type can be forged)
 _IMAGE_SIGNATURES = {
@@ -226,17 +251,34 @@ def _resolve_vision_model() -> str:
     return model
 
 
+def _resolve_vision_call_params(model: str, cfg: Config) -> tuple[List[str], dict]:
+    """Resolve API keys and api_base for vision, honoring LLM_CHANNELS deployments."""
+    keys: List[str] = []
+    extra: dict = {}
+    for entry in cfg.llm_model_list or []:
+        params = entry.get("litellm_params") or {}
+        entry_model = str(params.get("model") or entry.get("model_name") or "")
+        if entry_model != model:
+            continue
+        key = str(params.get("api_key") or "").strip()
+        if key and key not in keys:
+            keys.append(key)
+        if params.get("api_base"):
+            extra["api_base"] = params["api_base"]
+        if params.get("extra_headers"):
+            extra["extra_headers"] = params["extra_headers"]
+    if keys:
+        return keys, extra
+    return get_api_keys_for_model(model, cfg), extra_litellm_params(model, cfg)
+
+
 def _get_api_keys_for_model(model: str, cfg: Config) -> List[str]:
-    """Return available API keys for the given litellm model."""
-    if model.startswith("gemini/") or model.startswith("vertex_ai/"):
-        return [k for k in cfg.gemini_api_keys if k and len(k) >= 8]
-    if model.startswith("anthropic/"):
-        return [k for k in cfg.anthropic_api_keys if k and len(k) >= 8]
-    return [k for k in cfg.openai_api_keys if k and len(k) >= 8]
+    keys, _extra = _resolve_vision_call_params(model, cfg)
+    return keys
 
 
-def _call_litellm_vision(image_b64: str, mime_type: str, api_key: Optional[str] = None) -> str:
-    """Extract stock codes from an image using litellm (all providers via OpenAI vision format)."""
+def _call_litellm_vision(image_b64: str, mime_type: str, api_key: Optional[str] = None, *, prompt: Optional[str] = None) -> str:
+    """Extract structured data from an image using litellm (all providers via OpenAI vision format)."""
     global litellm
     cfg = get_config()
     model = _resolve_vision_model()
@@ -247,6 +289,7 @@ def _call_litellm_vision(image_b64: str, mime_type: str, api_key: Optional[str] 
     if not keys:
         raise ValueError(f"No API key found for vision model {model}")
     key = api_key if api_key and api_key in keys else random.choice(keys)
+    extra_params = _resolve_vision_call_params(model, cfg)[1]
 
     data_url = f"data:{mime_type};base64,{image_b64}"
     call_kwargs: dict = {
@@ -255,21 +298,17 @@ def _call_litellm_vision(image_b64: str, mime_type: str, api_key: Optional[str] 
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": EXTRACT_PROMPT},
+                    {"type": "text", "text": prompt or EXTRACT_PROMPT},
                     {"type": "image_url", "image_url": {"url": data_url}},
                 ],
             }
         ],
-        "max_tokens": 1024,
+        "max_tokens": 4096,
         "api_key": key,
-        "timeout": VISION_API_TIMEOUT,
+        "timeout": resolve_vision_api_timeout(),
+        "num_retries": 0,
+        **extra_params,
     }
-    # Add api_base and custom headers for OpenAI-compatible providers
-    if not model.startswith("gemini/") and not model.startswith("anthropic/") and not model.startswith("vertex_ai/"):
-        if cfg.openai_base_url:
-            call_kwargs["api_base"] = cfg.openai_base_url
-        if cfg.openai_base_url and "aihubmix.com" in cfg.openai_base_url:
-            call_kwargs["extra_headers"] = {"APP-Code": "GPIJ3886"}
 
     if getattr(litellm, "completion", None) is None:
         import litellm as litellm_module
@@ -335,6 +374,4 @@ def extract_stock_codes_from_image(
                 logger.warning(f"[ImageExtractor] 尝试 {attempt + 1}/3 失败，{delay}s 后重试: {e}")
                 time.sleep(delay)
 
-    raise ValueError(
-        f"Vision API 调用失败，请检查 API Key 与网络: {last_error}"
-    ) from last_error
+    raise ValueError(format_vision_api_error(last_error)) from last_error

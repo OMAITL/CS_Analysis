@@ -44,15 +44,15 @@ CS_ALLOWED_SKILL_IDS = CS_TECHNICAL_SKILL_IDS | CS_ADAPTED_SKILL_IDS
 
 CS_DEFAULT_SKILL_IDS: tuple[str, ...] = ("bull_trend",)
 
-CS_SKILL_DATA_MAPPING = """## CS 技能与输入数据映射（必须遵守）
-- 以下技能原文可能提到股票工具名；**禁止调用任何工具**，直接使用本 prompt 下方 JSON  payload。
-- `trend` 字段 ≈ `analyze_trend` 输出（MA、MACD、RSI、信号、支撑阻力等）。
-- `recent_daily_bars` ≈ `get_daily_history` 最近若干日 OHLCV。
-- `snapshot` 中各平台价格 ≈ 现价/挂牌参考；`volume` 为 K 线真实成交笔数，`sell_num` 仅为挂牌量。
-- `event_intel` / 事件情报正文 ≈ 新闻/事件检索结果（CS 无公司公告/财报）。
-- `index_summary`（若有）≈ 饰品指数近期走势，用于相对强弱判断。
-- 忽略技能中关于：筹码分布、换手率、涨停、板块排名、PE/财报、减持/解禁 的要求。
-- 饰品波动通常大于股票，乖离率与 RSI 阈值宜更保守。"""
+CS_SKILL_DATA_MAPPING = """## CS 技能与 Agent 工具映射（必须遵守）
+- `search_cs_item`：按饰品名搜索 good_id；多磨损档时须确认后再分析
+- `analyze_cs_item`：获取 trend（≈ analyze_trend）、recent_daily_bars（≈ K 线 OHLCV）、各平台价格快照
+- `search_cs_item_intel`：事件/新闻情报（≈ 综合情报，无财报/公告）
+- `get_cs_market_overview`：饰品指数/子板块；`include_watchlist=true` 时返回市场扫描候选
+- `get_cs_portfolio_snapshot`：用户 CS 持仓快照
+- `snapshot` 中各平台价格 ≈ 现价/挂牌参考；K 线 `volume` 为日成交笔数，`sell_num` 仅为挂牌量
+- 忽略技能原文中：筹码分布、换手率、涨停、板块排名、PE/财报、减持/解禁 等股票专用要求
+- 饰品波动通常大于股票，乖离率与 RSI 阈值宜更保守"""
 
 CS_TRADING_BASELINE_ZH = """## CS 饰品交易基线（与激活技能同时生效）
 1. **严进**：现价相对 MA5 乖离过大（通常 >5%）时不建议追涨，优先观望或等回踩。
