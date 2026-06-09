@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
-- [新功能] CS 自动告警：持仓变更后自动同步止盈/止损到价规则与组合风险监控；Web 服务启动后后台轮询评估，无需手动建规则。
+- [改进] 移除 Web 股票分析页面与侧栏入口（问股 `/stocks/chat`、股票持仓 `/stocks/portfolio` 路由保留）
+- [改进] 移除 Web 回测页面与侧栏入口（后端回测 API 与设置项保留）
+- [改进] CS 告警创建表单与全站 UI 隐藏 good_id，改用饰品搜索框选择目标；规则列表目标列显示饰品名称
+- [修复] CS 持仓名称与磨损字段不一致：匹配/入库时以名称末尾 `(磨损)` 为准同步 `wear`，页面标题去重展示。
+- [改进] CS 自动止盈/止损规则按 `good_id + 平台` 去重，购入价使用数量加权均价，避免同一饰品多次录入重复建规则。
 - [新功能] CS 智能层：持仓风险报告（`GET /api/v1/cs/holdings/risk`）与 CS 价格/盈亏/集中度/止损告警（接入告警中心 `cs_holdings`/`cs_item` scope）。
 - [新功能] CS 饰品持仓导入闭环：Draft 预览、三层 Match Engine、去重检测、确认后 commit；新增 API `/api/v1/cs/holdings/import/*`。
 - [修复] CS 截图导入 Vision 调用未走 `LLM_CHANNELS` 网关导致连接超时；并优化超时重试与 504 错误提示。

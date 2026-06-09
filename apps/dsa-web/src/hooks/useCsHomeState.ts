@@ -28,13 +28,10 @@ function saveHistory(items: CsHomeHistoryItem[]) {
   }
 }
 
-function parseSearchQuery(query: string): { goodId?: number; item?: string } {
+function parseSearchQuery(query: string): { item?: string } {
   const trimmed = query.trim();
   if (!trimmed) {
     return {};
-  }
-  if (/^\d+$/.test(trimmed)) {
-    return { goodId: Number.parseInt(trimmed, 10) };
   }
   return { item: trimmed };
 }
@@ -54,7 +51,7 @@ function buildHistoryEntry(result: CsItemAnalyzeResponse): CsHomeHistoryItem {
 }
 
 export function useCsHomeState() {
-  const [query, setQuery] = useState('769');
+  const [query, setQuery] = useState('');
   const [selectedItem, setSelectedItem] = useState<CsGoodIdItem | null>(null);
   const [platform, setPlatform] = useState('yyyp');
   const [refreshCrawl, setRefreshCrawl] = useState(false);
@@ -79,7 +76,7 @@ export function useCsHomeState() {
     }
     setSelectedHistoryId(id);
     setResult(item.result);
-    setQuery(String(item.goodId));
+    setQuery(item.itemName);
     setSelectedItem({
       goodId: item.goodId,
       name: item.itemName,
@@ -110,7 +107,7 @@ export function useCsHomeState() {
   const submitAnalysis = useCallback(async (overrideQuery?: string) => {
     const searchText = (overrideQuery ?? query).trim();
     if (!searchText) {
-      setInputError('请输入饰品名称或 good_id');
+      setInputError('请输入饰品名称');
       return;
     }
 
@@ -121,7 +118,6 @@ export function useCsHomeState() {
       goodId = selectedItem.goodId;
     } else {
       const parsed = parseSearchQuery(searchText);
-      goodId = parsed.goodId;
       item = parsed.item;
     }
 
@@ -150,7 +146,7 @@ export function useCsHomeState() {
     }
 
     if (!goodId) {
-      setInputError('请选择列表中的具体饰品，或直接输入 good_id');
+      setInputError('请从下拉列表中选择具体饰品后再分析');
       return;
     }
 

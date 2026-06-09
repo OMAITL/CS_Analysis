@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.services.cs_holdings_dedup import compute_dedup_key, normalize_wear
+from src.services.cs_holdings_dedup import compute_dedup_key, normalize_wear, reconcile_item_name_and_wear
 from src.services.cs_holdings_import_service import CSHoldingsImportService, _sessions, _sessions_lock
 from src.services.cs_holdings_match_engine import match_holding_item
 from src.storage import CSHolding, DatabaseManager
@@ -24,6 +24,12 @@ def holdings_db(tmp_path, monkeypatch):
 def test_normalize_wear_aliases():
     assert normalize_wear("FN") == "崭新出厂"
     assert normalize_wear("略有磨损") == "略有磨损"
+
+
+def test_reconcile_item_name_and_wear_prefers_suffix_in_name():
+    name = "运动手套 (★) | 树篱迷宫 (略有磨损)"
+    _, wear = reconcile_item_name_and_wear(name, "久经沙场")
+    assert wear == "略有磨损"
 
 
 def test_compute_dedup_key_stable():

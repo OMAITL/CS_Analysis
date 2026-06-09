@@ -77,8 +77,8 @@ export const CsReportSummary: React.FC<CsReportSummaryProps> = ({
   const price = data.trend.currentPrice || lastBar?.close;
 
   const meta: ReportMeta = {
-    queryId: `cs-${data.goodId}`,
-    stockCode: `cs:${data.goodId}`,
+    queryId: `cs-${data.itemName}`,
+    stockCode: data.itemName,
     stockName: data.itemName,
     reportType: 'detailed',
     reportLanguage: 'zh',

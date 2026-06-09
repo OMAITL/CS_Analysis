@@ -43,7 +43,7 @@ export const IaLandingHero: React.FC<IaLandingHeroProps> = ({
         AI 驱动 · 结论优先
       </div>
       <h1 className="ia-landing-title">AI 饰品投资分析助手</h1>
-      <p className="ia-landing-subtitle">输入饰品名称、皮肤名称或商品 ID，30 秒获得可执行的投资建议</p>
+      <p className="ia-landing-subtitle">输入饰品名称或皮肤名称，30 秒获得可执行的投资建议</p>
 
       <div className="ia-landing-search">
         <CsItemSearchInput

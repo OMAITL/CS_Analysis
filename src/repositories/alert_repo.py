@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_, delete, desc, func, select
+from sqlalchemy import and_, delete, desc, func, or_, select
 
 from src.storage import (
     AlertCooldownRecord,
@@ -18,6 +18,9 @@ from src.storage import (
     AlertTriggerRecord,
     DatabaseManager,
 )
+
+
+CS_ALERT_TARGET_SCOPES = frozenset({"cs_holdings", "cs_item"})
 
 
 class AlertRepository:
@@ -68,6 +71,7 @@ class AlertRepository:
         target_scope: Optional[str] = None,
         target: Optional[str] = None,
         source: Optional[str] = None,
+        cs_only: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[AlertRuleRecord], int]:
@@ -76,7 +80,9 @@ class AlertRepository:
             conditions.append(AlertRuleRecord.enabled.is_(enabled))
         if alert_type:
             conditions.append(AlertRuleRecord.alert_type == alert_type)
-        if target_scope:
+        if cs_only:
+            conditions.append(AlertRuleRecord.target_scope.in_(CS_ALERT_TARGET_SCOPES))
+        elif target_scope:
             conditions.append(AlertRuleRecord.target_scope == target_scope)
         if target:
             conditions.append(AlertRuleRecord.target == target)
@@ -266,6 +272,7 @@ class AlertRepository:
         rule_id: Optional[int] = None,
         target: Optional[str] = None,
         status: Optional[str] = None,
+        cs_only: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> Tuple[List[AlertTriggerRecord], int]:
@@ -276,6 +283,13 @@ class AlertRepository:
             conditions.append(AlertTriggerRecord.target == target)
         if status:
             conditions.append(AlertTriggerRecord.status == status)
+        if cs_only:
+            conditions.append(
+                or_(
+                    AlertTriggerRecord.target.like("cs_item:%"),
+                    AlertTriggerRecord.target.like("cs_holdings:%"),
+                )
+            )
 
         where_clause = and_(*conditions) if conditions else True
         offset = (page - 1) * page_size

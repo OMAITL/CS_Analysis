@@ -19,6 +19,8 @@ export type CsItemSearchInputProps = {
   disabled?: boolean;
   hasError?: boolean;
   placeholder?: string;
+  ariaLabel?: string;
+  inputId?: string;
   onSubmit?: () => void;
 };
 
@@ -29,7 +31,9 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
   onSelect,
   disabled = false,
   hasError = false,
-  placeholder = '饰品名称 / 刀型 / 皮肤，或 good_id',
+  placeholder = '名称 / 皮肤，搜索并选择饰品',
+  ariaLabel,
+  inputId,
   onSubmit,
 }) => {
   const listboxId = useId();
@@ -46,13 +50,6 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
 
   const runSearch = useCallback(async (term: string) => {
     const trimmed = term.trim();
-    if (/^\d+$/.test(trimmed)) {
-      setItems([]);
-      setTotal(0);
-      setSearchError(null);
-      setOpen(false);
-      return;
-    }
     if (trimmed.length < MIN_SEARCH_LEN) {
       setItems([]);
       setTotal(0);
@@ -131,9 +128,6 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
     if (selectedItem && next.trim() !== selectedItem.name.trim()) {
       onSelect(null);
     }
-    if (/^\d+$/.test(next.trim())) {
-      onSelect(null);
-    }
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -167,6 +161,7 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
   return (
     <div ref={rootRef} className="relative min-w-0 flex-1 cs-item-search">
       <input
+        id={inputId}
         data-testid="cs-home-query"
         className={cn(INPUT_CLASS, hasError && 'border-danger/50')}
         value={value}
@@ -179,6 +174,7 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
         }}
         disabled={disabled}
         placeholder={placeholder}
+        aria-label={ariaLabel}
         role="combobox"
         aria-expanded={open}
         aria-controls={listboxId}
@@ -188,11 +184,6 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
       {loading ? (
         <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-text">
           搜索中…
-        </span>
-      ) : null}
-      {selectedItem ? (
-        <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 font-mono text-[10px] text-muted-text">
-          #{selectedItem.goodId}
         </span>
       ) : null}
       {open && items.length > 0 ? (
@@ -215,10 +206,9 @@ export const CsItemSearchInput: React.FC<CsItemSearchInputProps> = ({
                   onClick={() => pickItem(item)}
                 >
                   <span className="font-medium text-foreground">{item.name}</span>
-                  <span className="font-mono text-[11px] text-muted-text">
-                    #{item.goodId}
-                    {item.marketHashName ? ` · ${item.marketHashName}` : ''}
-                  </span>
+                  {item.marketHashName ? (
+                    <span className="text-[11px] text-muted-text">{item.marketHashName}</span>
+                  ) : null}
                 </button>
               </li>
             );

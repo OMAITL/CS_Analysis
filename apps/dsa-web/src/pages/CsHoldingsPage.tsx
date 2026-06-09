@@ -24,6 +24,7 @@ import {
 import { CsItemSearchInput } from '../components/cs/CsItemSearchInput';
 import { getParsedApiError, type ParsedApiError } from '../api/error';
 import { cn } from '../utils/cn';
+import { displayHoldingsTitle, displayHoldingsWear } from '../utils/csHoldingsDisplay';
 import type { CsGoodIdItem } from '../types/cs';
 import '../styles/ia-v2.css';
 
@@ -125,38 +126,9 @@ function pnlTone(value?: number | null): 'success' | 'danger' | 'default' {
   return value >= 0 ? 'danger' : 'success';
 }
 
-type HoldingsRisk = {
-  asOf?: string;
-  platform?: string;
-  concentration?: {
-    alert?: boolean;
-    topWeightPct?: number;
-    topPositions?: Array<{ itemName?: string; weightPct?: number; marketTotal?: number }>;
-  };
-  stopLoss?: {
-    nearAlert?: boolean;
-    triggeredCount?: number;
-    nearCount?: number;
-    items?: Array<{ itemName?: string; lossPct?: number; pnlPct?: number }>;
-  };
-  priceStale?: {
-    alert?: boolean;
-    affectedCount?: number;
-    items?: Array<{ itemName?: string; missingGoodId?: boolean; missingMarketPrice?: boolean }>;
-  };
-  platformExposure?: {
-    platforms?: Array<{ platform?: string; weightPct?: number; marketTotal?: number }>;
-  };
-  topGainers?: Array<{ itemName?: string; pnlPct?: number }>;
-  topLosers?: Array<{ itemName?: string; pnlPct?: number }>;
-  thresholds?: Record<string, number>;
-};
-
 const CsHoldingsPage: React.FC = () => {
   const [summary, setSummary] = useState<HoldingsSummary>({});
   const [items, setItems] = useState<HoldingRow[]>([]);
-  const [risk, setRisk] = useState<HoldingsRisk | null>(null);
-  const [riskWarning, setRiskWarning] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<ParsedApiError | null>(null);
@@ -180,7 +152,6 @@ const CsHoldingsPage: React.FC = () => {
 
   const loadSnapshot = useCallback(async (refreshPrices = true) => {
     setError(null);
-    setRiskWarning(null);
     try {
       const data = await csApi.getHoldingsSnapshot(refreshPrices) as {
         summary?: HoldingsSummary;
@@ -188,16 +159,7 @@ const CsHoldingsPage: React.FC = () => {
       };
       setSummary(data.summary ?? {});
       setItems(data.items ?? []);
-      try {
-        const riskData = await csApi.getHoldingsRisk(refreshPrices) as HoldingsRisk;
-        setRisk(riskData);
-      } catch (riskErr) {
-        setRisk(null);
-        const parsed = getParsedApiError(riskErr);
-        setRiskWarning(parsed.message || '风险报告获取失败，已降级为仅展示持仓快照。');
-      }
     } catch (err) {
-      setRisk(null);
       setError(getParsedApiError(err));
     } finally {
       setLoading(false);
@@ -371,7 +333,7 @@ const CsHoldingsPage: React.FC = () => {
           <p className="label-uppercase">Portfolio</p>
           <h1 className="mt-1 text-xl font-semibold text-foreground">饰品持仓</h1>
           <p className="mt-1 max-w-2xl text-sm text-secondary-text">
-            记录购入成本并跟踪市场价与盈亏。支持手动录入或上传截图识别；绑定 good_id 后可刷新 CSQAQ 市价。
+            记录购入成本并跟踪市场价与盈亏。支持手动录入或上传截图识别；匹配饰品后可刷新 CSQAQ 市价。
             <Link to="/stocks/portfolio" className="ml-2 text-cyan underline-offset-2 hover:underline">
               股票持仓
             </Link>
@@ -411,10 +373,6 @@ const CsHoldingsPage: React.FC = () => {
       </div>
 
       {error ? <ApiErrorAlert error={error} /> : null}
-      {riskWarning ? (
-        <p className="rounded-xl border border-warning/40 bg-warning/10 px-4 py-2 text-sm text-warning">{riskWarning}</p>
-      ) : null}
-
       <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
         <StatCard
           label="市场价"
@@ -453,78 +411,6 @@ const CsHoldingsPage: React.FC = () => {
         />
       </div>
 
-      {risk ? (
-        <SectionCard title="持仓风险" subtitle="Risk">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-foreground">集中度</h3>
-                <Badge variant={risk.concentration?.alert ? 'warning' : 'default'}>
-                  {risk.concentration?.alert ? '告警' : '正常'}
-                </Badge>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">
-                {(risk.concentration?.topWeightPct ?? 0).toFixed(1)}%
-              </p>
-              <p className="mt-1 text-xs text-secondary-text">
-                Top1 权重 · 阈值 {(risk.thresholds?.concentrationAlertPct ?? 35).toFixed(0)}%
-              </p>
-              {(risk.concentration?.topPositions ?? []).slice(0, 3).map((row) => (
-                <p key={row.itemName} className="mt-1 truncate text-xs text-secondary-text">
-                  {row.itemName} · {(row.weightPct ?? 0).toFixed(1)}%
-                </p>
-              ))}
-            </div>
-            <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-foreground">止损接近</h3>
-                <Badge variant={risk.stopLoss?.nearAlert ? 'warning' : 'default'}>
-                  {risk.stopLoss?.nearAlert ? '关注' : '正常'}
-                </Badge>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">{risk.stopLoss?.nearCount ?? 0}</p>
-              <p className="mt-1 text-xs text-secondary-text">
-                接近/触发 {risk.stopLoss?.triggeredCount ?? 0} 件 · 阈值 {(risk.thresholds?.stopLossAlertPct ?? 10).toFixed(0)}%
-              </p>
-              {(risk.stopLoss?.items ?? []).slice(0, 3).map((row) => (
-                <p key={row.itemName} className="mt-1 truncate text-xs text-secondary-text">
-                  {row.itemName} · 亏损 {(row.lossPct ?? 0).toFixed(1)}%
-                </p>
-              ))}
-            </div>
-            <div className="rounded-xl border border-border/60 bg-card/40 p-4">
-              <div className="mb-2 flex items-center justify-between">
-                <h3 className="text-sm font-medium text-foreground">价格状态</h3>
-                <Badge variant={risk.priceStale?.alert ? 'warning' : 'default'}>
-                  {risk.priceStale?.alert ? '缺失' : '完整'}
-                </Badge>
-              </div>
-              <p className="text-2xl font-semibold text-foreground">{risk.priceStale?.affectedCount ?? 0}</p>
-              <p className="mt-1 text-xs text-secondary-text">缺少 good_id 或市价的条目</p>
-              {(risk.priceStale?.items ?? []).slice(0, 3).map((row) => (
-                <p key={row.itemName} className="mt-1 truncate text-xs text-secondary-text">
-                  {row.itemName}
-                  {row.missingGoodId ? ' · 无 good_id' : ''}
-                  {row.missingMarketPrice ? ' · 无市价' : ''}
-                </p>
-              ))}
-            </div>
-          </div>
-          {(risk.platformExposure?.platforms?.length ?? 0) > 1 ? (
-            <div className="mt-4 rounded-xl border border-border/60 bg-card/40 p-4">
-              <h3 className="mb-2 text-sm font-medium text-foreground">平台分布</h3>
-              <div className="flex flex-wrap gap-2">
-                {(risk.platformExposure?.platforms ?? []).map((row) => (
-                  <Badge key={row.platform} variant="default">
-                    {row.platform} · {(row.weightPct ?? 0).toFixed(1)}%
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </SectionCard>
-      ) : null}
-
       {mode === 'manual' ? (
         <SectionCard title="手动添加饰品" subtitle="Holdings">
           <form className="space-y-4" onSubmit={(e) => void handleManualSubmit(e)}>
@@ -539,7 +425,7 @@ const CsHoldingsPage: React.FC = () => {
                     setSelectedItem(item);
                     if (item) setManualName(item.name);
                   }}
-                  placeholder="搜索饰品名称或 good_id"
+                  placeholder="名称 / 皮肤，搜索并选择饰品"
                 />
               </label>
               <label className="block space-y-2 text-sm">
@@ -674,7 +560,7 @@ const CsHoldingsPage: React.FC = () => {
                         />
                       </div>
                       <p className="text-xs text-secondary-text">
-                        市场价 {formatMoney(row.marketPrice)} · good_id {row.goodId ?? '--'}
+                        市场价 {formatMoney(row.marketPrice)}
                       </p>
                     </div>
                   </div>
@@ -733,7 +619,9 @@ const CsHoldingsPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {sortedItems.map((row) => (
+                {sortedItems.map((row) => {
+                  const wearLabel = displayHoldingsWear(row.itemName, row.wear);
+                  return (
                   <tr key={row.id} className="border-b border-border/40">
                     <td className="py-3 pr-3">
                       <div className="flex items-center gap-3">
@@ -749,11 +637,18 @@ const CsHoldingsPage: React.FC = () => {
                           </div>
                         )}
                         <div className="min-w-0">
-                          <div className="truncate font-medium text-foreground">{row.itemName}</div>
+                          <div className="truncate font-medium text-foreground">
+                            {displayHoldingsTitle(row.itemName, row.wear)}
+                          </div>
                           <div className="mt-0.5 flex flex-wrap gap-1.5">
-                            {row.wear ? <span className="text-xs text-secondary-text">{row.wear}</span> : null}
-                            {row.goodId ? (
-                              <Link to={`/chat?goodId=${row.goodId}&name=${encodeURIComponent(row.itemName)}`} className="text-xs text-cyan hover:underline">
+                            {wearLabel ? (
+                              <span className="text-xs text-secondary-text">{wearLabel}</span>
+                            ) : null}
+                            {row.itemName ? (
+                              <Link
+                                to={`/chat?name=${encodeURIComponent(row.itemName)}&platform=${encodeURIComponent(row.platform ?? 'yyyp')}`}
+                                className="text-xs text-cyan hover:underline"
+                              >
                                 问饰品
                               </Link>
                             ) : null}
@@ -785,7 +680,8 @@ const CsHoldingsPage: React.FC = () => {
                       </Button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

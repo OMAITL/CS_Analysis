@@ -70,9 +70,6 @@ export const CsHomeOverview: React.FC<CsHomeOverviewProps> = ({ data }) => {
                   ) : null}
                 </div>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
-                  <span className="home-accent-chip px-2 py-0.5 font-mono text-xs">
-                    cs:{data.goodId}
-                  </span>
                   <span className="home-accent-chip px-2 py-0.5 text-xs">
                     {data.platform.toUpperCase()}
                   </span>

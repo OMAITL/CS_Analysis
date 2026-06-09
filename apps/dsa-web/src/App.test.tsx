@@ -43,10 +43,6 @@ vi.mock('./pages/PortfolioPage', () => ({
   default: () => <div data-testid="portfolio-page">Portfolio</div>,
 }));
 
-vi.mock('./pages/BacktestPage', () => ({
-  default: () => <div data-testid="backtest-page">Backtest</div>,
-}));
-
 vi.mock('./pages/AlertsPage', () => ({
   default: () => <div data-testid="alerts-page">Alerts</div>,
 }));

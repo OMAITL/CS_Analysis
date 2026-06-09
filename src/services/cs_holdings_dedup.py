@@ -21,6 +21,39 @@ _WEAR_ALIASES = {
 }
 
 
+_KNOWN_WEAR_VALUES = frozenset(_WEAR_ALIASES.values())
+_WEAR_SUFFIX_RE = re.compile(r"\s*[（(]([^)）]+)[)）]\s*$")
+
+
+def extract_wear_from_item_name(item_name: Optional[str]) -> str:
+    text = (item_name or "").strip()
+    match = _WEAR_SUFFIX_RE.search(text)
+    if not match:
+        return ""
+    normalized = normalize_wear(match.group(1).strip())
+    return normalized if normalized in _KNOWN_WEAR_VALUES else ""
+
+
+def strip_wear_from_item_name(item_name: Optional[str]) -> str:
+    text = (item_name or "").strip()
+    if not extract_wear_from_item_name(text):
+        return text
+    return _WEAR_SUFFIX_RE.sub("", text).strip()
+
+
+def reconcile_item_name_and_wear(item_name: str, wear: str = "") -> tuple[str, str]:
+    """Keep catalog/full item_name; align wear field with trailing (磨损) suffix when present."""
+
+    name = (item_name or "").strip()
+    wear_from_name = extract_wear_from_item_name(name)
+    wear_field = normalize_wear(wear)
+    if wear_from_name:
+        resolved_wear = wear_from_name
+    else:
+        resolved_wear = wear_field
+    return name, resolved_wear
+
+
 def normalize_wear(value: Optional[str]) -> str:
     text = (value or "").strip().lower()
     if not text:
@@ -70,9 +103,15 @@ def compute_dedup_key(
 
 def attach_dedup_fields(payload: Dict[str, Any]) -> Dict[str, Any]:
     payload = dict(payload)
+    item_name, wear = reconcile_item_name_and_wear(
+        str(payload.get("item_name") or ""),
+        str(payload.get("wear") or ""),
+    )
+    payload["item_name"] = item_name
+    payload["wear"] = wear
     payload["dedup_key"] = compute_dedup_key(
-        item_name=str(payload.get("item_name") or ""),
-        wear=str(payload.get("wear") or ""),
+        item_name=item_name,
+        wear=wear,
         float_value=payload.get("float_value"),
         platform=str(payload.get("platform") or "yyyp"),
     )

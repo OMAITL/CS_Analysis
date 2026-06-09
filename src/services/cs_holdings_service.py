@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Optional
 from market_provider.csqaq.client import CSQAQClient, resolve_price_platform
 from market_provider.csqaq.item_analysis import fetch_item_snapshot
 from src.repositories.cs_holdings_repo import CSHoldingsRepository
-from src.services.cs_holdings_dedup import attach_dedup_fields, compute_dedup_key
+from src.services.cs_holdings_dedup import attach_dedup_fields, reconcile_item_name_and_wear
 from src.services.cs_holdings_match_engine import match_holding_item
 from src.services.image_cs_holdings_extractor import extract_cs_holdings_from_image
 
@@ -93,6 +93,7 @@ class CSHoldingsService:
                     "good_id": payload["good_id"],
                     "item_name": payload.get("item_name", row.item_name),
                     "market_hash_name": payload.get("market_hash_name", row.market_hash_name or ""),
+                    "wear": payload.get("wear", row.wear or ""),
                     "dedup_key": payload["dedup_key"],
                 },
             )
@@ -106,6 +107,25 @@ class CSHoldingsService:
 
     def _refresh_row_prices(self, row: Any) -> Dict[str, Any]:
         platform = (row.platform or "yyyp").lower()
+        item_name, wear = reconcile_item_name_and_wear(row.item_name or "", row.wear or "")
+        if wear != (row.wear or ""):
+            repaired = attach_dedup_fields(
+                {
+                    "item_name": item_name,
+                    "wear": wear,
+                    "float_value": row.float_value,
+                    "platform": platform,
+                }
+            )
+            try:
+                self.repo.update(
+                    row.id,
+                    {"wear": wear, "dedup_key": repaired["dedup_key"]},
+                )
+                row.wear = wear
+            except Exception as exc:
+                logger.debug("CS holdings wear repair skipped id=%s: %s", row.id, exc)
+
         market_price = row.market_price
         thumbnail_url = row.thumbnail_url
         good_id = row.good_id
@@ -132,9 +152,9 @@ class CSHoldingsService:
         return {
             "id": row.id,
             "good_id": good_id,
-            "item_name": row.item_name,
+            "item_name": item_name,
             "market_hash_name": row.market_hash_name or "",
-            "wear": row.wear or "",
+            "wear": wear,
             "float_value": row.float_value,
             "platform": platform,
             "quantity": qty,
@@ -240,6 +260,7 @@ class CSHoldingsService:
         name = (item_name or "").strip()
         if not name:
             raise ValueError("item_name is required")
+        name, wear = reconcile_item_name_and_wear(name, wear or "")
         plat = _platform_name(platform or "yyyp")
         gid = good_id or self._resolve_good_id(name, wear)
         row = self.repo.create(
@@ -283,10 +304,18 @@ class CSHoldingsService:
         if any(k in payload for k in ("item_name", "wear", "float_value", "platform")):
             row_before = self.repo.get(holding_id)
             if row_before is not None:
+                merged_name = payload.get("item_name", row_before.item_name)
+                merged_wear = payload.get("wear", row_before.wear)
+                item_name, wear = reconcile_item_name_and_wear(
+                    str(merged_name or ""),
+                    str(merged_wear or ""),
+                )
+                payload["item_name"] = item_name
+                payload["wear"] = wear
                 dedup_payload = attach_dedup_fields(
                     {
-                        "item_name": payload.get("item_name", row_before.item_name),
-                        "wear": payload.get("wear", row_before.wear),
+                        "item_name": item_name,
+                        "wear": wear,
                         "float_value": payload.get("float_value", row_before.float_value),
                         "platform": payload.get("platform", row_before.platform),
                     }
@@ -310,15 +339,17 @@ class CSHoldingsService:
             name = str(raw.get("item_name") or "").strip()
             if not name:
                 continue
+            wear_text = str(raw.get("wear") or "")
+            name, wear_text = reconcile_item_name_and_wear(name, wear_text)
             plat = _platform_name(str(raw.get("platform") or "yyyp"))
-            gid = raw.get("good_id") or self._resolve_good_id(name, str(raw.get("wear") or ""))
+            gid = raw.get("good_id") or self._resolve_good_id(name, wear_text)
             payloads.append(
                 attach_dedup_fields(
                     {
                         "good_id": int(gid) if gid is not None else None,
                         "item_name": name,
                         "market_hash_name": str(raw.get("market_hash_name") or ""),
-                        "wear": str(raw.get("wear") or ""),
+                        "wear": wear_text,
                         "float_value": raw.get("float_value"),
                         "platform": plat,
                         "quantity": max(1, int(raw.get("quantity") or 1)),

@@ -24,6 +24,7 @@ import type {
 import { formatDateTime } from '../utils/format';
 
 const PAGE_SIZE = 20;
+const CS_ALERTS_ONLY = true;
 
 function enabledFilterToQuery(value: AlertRuleEnabledFilter): boolean | undefined {
   if (value === 'enabled') return true;
@@ -99,7 +100,7 @@ function formatNotificationStatus(notification: AlertNotificationItem): string {
 
 const AlertsPage: React.FC = () => {
   useEffect(() => {
-    document.title = '告警中心 - DSA';
+    document.title = 'CS 饰品告警 - CS 投资助手';
   }, []);
 
   const [rules, setRules] = useState<AlertRuleItem[]>([]);
@@ -134,6 +135,7 @@ const AlertsPage: React.FC = () => {
     const baseQuery = {
       enabled: enabledFilterToQuery(enabledFilter),
       alertType: alertTypeFilterToQuery(alertTypeFilter),
+      csOnly: CS_ALERTS_ONLY,
       pageSize: PAGE_SIZE,
     };
     setRulesLoading(true);
@@ -167,7 +169,7 @@ const AlertsPage: React.FC = () => {
   const loadTriggers = useCallback(async () => {
     setTriggersLoading(true);
     try {
-      const response = await alertsApi.listTriggers({ page: 1, pageSize: PAGE_SIZE });
+      const response = await alertsApi.listTriggers({ page: 1, pageSize: PAGE_SIZE, csOnly: CS_ALERTS_ONLY });
       setTriggers(response.items);
       setTriggersError(null);
     } catch (error) {
@@ -261,9 +263,9 @@ const AlertsPage: React.FC = () => {
   return (
     <AppPage className="space-y-5">
       <PageHeader
-        eyebrow="Alert Center"
-        title="告警中心"
-        description="管理事件告警、日线技术指标、自选股、持仓/账户联动和大盘红绿灯规则，执行一次性测试，并查看后台评估任务记录的触发历史。"
+        eyebrow="CS Alerts"
+        title="饰品告警"
+        description="管理 CS 饰品持仓的价格提醒与风险监控。持仓录入后会自动生成止盈/止损规则；也可在此手动补充规则，并查看触发历史。"
       />
 
       {createError ? <ApiErrorAlert error={createError} onDismiss={() => setCreateError(null)} /> : null}
@@ -282,7 +284,7 @@ const AlertsPage: React.FC = () => {
       {rulesError ? <ApiErrorAlert error={rulesError} onDismiss={() => setRulesError(null)} /> : null}
 
       <div className="grid items-stretch gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <AlertRuleForm onSubmit={handleCreateRule} isSubmitting={createLoading} />
+        <AlertRuleForm onSubmit={handleCreateRule} isSubmitting={createLoading} csOnly={CS_ALERTS_ONLY} />
         <div className="flex h-full min-h-0 flex-col gap-4">
           <AlertRuleList
             className="flex h-full min-h-0 flex-col"
@@ -293,6 +295,7 @@ const AlertsPage: React.FC = () => {
             isLoading={rulesLoading}
             enabledFilter={enabledFilter}
             alertTypeFilter={alertTypeFilter}
+            csOnly={CS_ALERTS_ONLY}
             onEnabledFilterChange={(value) => {
               setEnabledFilter(value);
               setRulesPage(1);

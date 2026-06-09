@@ -1,5 +1,6 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { csApi } from '../../api/cs';
 import AlertsPage from '../AlertsPage';
 
 const {
@@ -35,11 +36,30 @@ vi.mock('../../api/alerts', () => ({
   },
 }));
 
-vi.mock('../../api/portfolio', () => ({
-  portfolioApi: {
-    getAccounts: vi.fn().mockResolvedValue({ accounts: [] }),
+vi.mock('../../api/cs', () => ({
+  csApi: {
+    searchItems: vi.fn(),
   },
 }));
+
+const csSearchItem = {
+  goodId: 769,
+  name: 'AK-47 | 二西莫夫',
+  marketHashName: 'AK-47 | Asiimov (Field-Tested)',
+};
+
+async function selectCsAlertTargetItem() {
+  vi.mocked(csApi.searchItems).mockResolvedValue({
+    items: [csSearchItem],
+    pageIndex: 1,
+    pageSize: 20,
+    total: 1,
+  });
+  fireEvent.change(screen.getByLabelText('目标饰品'), { target: { value: 'AK' } });
+  await waitFor(() => expect(csApi.searchItems).toHaveBeenCalled());
+  const listbox = await screen.findByRole('listbox');
+  fireEvent.click(within(listbox).getByText('AK-47 | 二西莫夫'));
+}
 
 const parsedError = {
   title: '加载失败',
@@ -51,14 +71,14 @@ const parsedError = {
 
 const rule = {
   id: 1,
-  name: '茅台价格突破',
-  targetScope: 'single_symbol' as const,
-  target: '600519',
-  alertType: 'price_cross' as const,
-  parameters: { direction: 'above' as const, price: 1800 },
+  name: 'CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120',
+  targetScope: 'cs_item' as const,
+  target: '769',
+  alertType: 'cs_price_cross' as const,
+  parameters: { direction: 'above' as const, price: 120, platform: 'yyyp' as const },
   severity: 'warning' as const,
   enabled: true,
-  source: 'api',
+  source: 'cs_auto',
   createdAt: '2026-05-18T09:00:00',
   updatedAt: '2026-05-18T09:30:00',
 };
@@ -79,11 +99,11 @@ beforeEach(() => {
       {
         id: 10,
         ruleId: 1,
-        target: '600519',
-        observedValue: 1801,
-        threshold: 1800,
-        reason: '600519 price above 1800',
-        dataSource: 'realtime_quote',
+        target: 'cs_item:769',
+        observedValue: 125,
+        threshold: 120,
+        reason: 'CS item 769 price above 120.00',
+        dataSource: 'csqaq',
         dataTimestamp: '2026-05-18T09:30:00',
         triggeredAt: '2026-05-18T09:30:01',
         status: 'triggered',
@@ -98,8 +118,8 @@ beforeEach(() => {
     ruleId: 1,
     status: 'triggered',
     triggered: true,
-    observedValue: 1801,
-    message: '600519 price above 1800',
+    observedValue: 125,
+    message: 'CS item 769 price above 120.00',
   });
   createRule.mockResolvedValue(rule);
   disableRule.mockResolvedValue({ ...rule, enabled: false });
@@ -108,20 +128,21 @@ beforeEach(() => {
 });
 
 describe('AlertsPage', () => {
-  it('loads rules, trigger history, and notification empty state', async () => {
+  it('loads CS rules, trigger history, and notification empty state', async () => {
     render(<AlertsPage />);
 
-    expect(screen.getByText('管理事件告警、日线技术指标、自选股、持仓/账户联动和大盘红绿灯规则，执行一次性测试，并查看后台评估任务记录的触发历史。')).toBeInTheDocument();
-    expect(await screen.findByText('茅台价格突破')).toBeInTheDocument();
-    expect(await screen.findByText('600519 price above 1800')).toBeInTheDocument();
+    expect(screen.getByText(/管理 CS 饰品持仓的价格提醒与风险监控/)).toBeInTheDocument();
+    expect(await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120')).toBeInTheDocument();
+    expect(await screen.findByText('CS item 769 price above 120.00')).toBeInTheDocument();
     expect(await screen.findByText('暂无通知尝试记录')).toBeInTheDocument();
     expect(listRules).toHaveBeenCalledWith({
       enabled: undefined,
       alertType: undefined,
+      csOnly: true,
       page: 1,
       pageSize: 20,
     });
-    expect(listTriggers).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+    expect(listTriggers).toHaveBeenCalledWith({ page: 1, pageSize: 20, csOnly: true });
     expect(listNotifications).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
   });
 
@@ -133,15 +154,15 @@ describe('AlertsPage', () => {
 
     await waitFor(() => expect(testRule).toHaveBeenCalledWith(1));
     expect(await screen.findByText('测试结果')).toBeInTheDocument();
-    expect(screen.getByText(/600519 price above 1800/)).toBeInTheDocument();
-    expect(screen.getByText(/观察值：1801/)).toBeInTheDocument();
-    expect(screen.queryByText(/realtime_quote/)).not.toBeInTheDocument();
+    expect(screen.getByText(/CS item 769 price above 120.00/)).toBeInTheDocument();
+    expect(screen.getByText(/观察值：125/)).toBeInTheDocument();
+    expect(screen.queryByText(/csqaq/)).not.toBeInTheDocument();
   });
 
   it('renders batch dry-run summary and target results', async () => {
     testRule.mockResolvedValueOnce({
       ruleId: 1,
-      targetScope: 'watchlist',
+      targetScope: 'cs_holdings',
       status: 'triggered',
       triggered: true,
       observedValue: 11,
@@ -152,8 +173,8 @@ describe('AlertsPage', () => {
       skippedCount: 0,
       targetResults: [
         {
-          target: '600519',
-          displayTarget: '自选股 - 600519',
+          target: '769',
+          displayTarget: '饰品 769',
           status: 'triggered',
           recordStatus: 'triggered',
           triggered: true,
@@ -161,8 +182,8 @@ describe('AlertsPage', () => {
           message: 'triggered',
         },
         {
-          target: '000001',
-          displayTarget: '自选股 - 000001',
+          target: '770',
+          displayTarget: '饰品 770',
           status: 'not_triggered',
           recordStatus: 'degraded',
           triggered: false,
@@ -176,23 +197,25 @@ describe('AlertsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '测试' }));
 
     expect(await screen.findByText(/评估 2 · 触发 1 · 降级 1 · 跳过 0/)).toBeInTheDocument();
-    expect(screen.getByText('自选股 - 600519')).toBeInTheDocument();
+    expect(screen.getByText('饰品 769')).toBeInTheDocument();
     expect(screen.getByText(/not_triggered \/ degraded/)).toBeInTheDocument();
   });
 
-  it('creates a rule through the page form and reloads rules', async () => {
+  it('creates a CS rule through the page form and reloads rules', async () => {
     render(<AlertsPage />);
 
-    await screen.findByText('茅台价格突破');
-    fireEvent.change(screen.getByLabelText('标的代码'), { target: { value: 'aapl' } });
+    await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120');
+    fireEvent.change(screen.getByLabelText('目标范围'), { target: { value: 'cs_item' } });
+    await selectCsAlertTargetItem();
     fireEvent.change(screen.getByLabelText('价格阈值'), { target: { value: '200' } });
     fireEvent.click(screen.getByRole('button', { name: '创建规则' }));
 
     await waitFor(() => {
       expect(createRule).toHaveBeenCalledWith(expect.objectContaining({
-        target: 'AAPL',
-        alertType: 'price_cross',
-        parameters: { direction: 'above', price: 200 },
+        targetScope: 'cs_item',
+        target: '769',
+        alertType: 'cs_price_cross',
+        parameters: { direction: 'above', price: 200, platform: 'yyyp' },
       }));
     });
     expect(await screen.findByText(/已创建告警规则/)).toBeInTheDocument();
@@ -202,18 +225,19 @@ describe('AlertsPage', () => {
     createRule.mockRejectedValueOnce({ parsedError });
     render(<AlertsPage />);
 
-    await screen.findByText('茅台价格突破');
-    fireEvent.change(screen.getByLabelText('标的代码'), { target: { value: 'aapl' } });
+    await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120');
+    fireEvent.change(screen.getByLabelText('目标范围'), { target: { value: 'cs_item' } });
+    await selectCsAlertTargetItem();
     fireEvent.change(screen.getByLabelText('价格阈值'), { target: { value: '200' } });
     fireEvent.click(screen.getByRole('button', { name: '创建规则' }));
 
     expect(await screen.findByText('加载失败')).toBeInTheDocument();
-    expect(screen.getByLabelText('标的代码')).toHaveValue('aapl');
+    expect(screen.getByLabelText('目标饰品')).toHaveValue('AK-47 | 二西莫夫');
     expect(screen.getByLabelText('价格阈值')).toHaveValue(200);
   });
 
   it('clamps rules pagination when a mutation leaves the current page empty', async () => {
-    const page2Rule = { ...rule, id: 2, name: '第二页规则', target: 'AAPL' };
+    const page2Rule = { ...rule, id: 2, name: '第二页 CS 规则', target: '770' };
     listRules
       .mockResolvedValueOnce({ items: [rule], total: 21, page: 1, pageSize: 20 })
       .mockResolvedValueOnce({ items: [page2Rule], total: 21, page: 2, pageSize: 20 })
@@ -222,10 +246,10 @@ describe('AlertsPage', () => {
 
     render(<AlertsPage />);
 
-    expect(await screen.findByText('茅台价格突破')).toBeInTheDocument();
+    expect(await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '2' }));
-    expect(await screen.findByText('第二页规则')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('删除 第二页规则'));
+    expect(await screen.findByText('第二页 CS 规则')).toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('删除 第二页 CS 规则'));
     fireEvent.click(await screen.findByRole('button', { name: '删除' }));
 
     await waitFor(() => expect(deleteRule).toHaveBeenCalledWith(2));
@@ -233,11 +257,12 @@ describe('AlertsPage', () => {
       expect(listRules).toHaveBeenCalledWith({
         enabled: undefined,
         alertType: undefined,
+        csOnly: true,
         page: 1,
         pageSize: 20,
       });
     });
-    expect(await screen.findByText('茅台价格突破')).toBeInTheDocument();
+    expect(await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120')).toBeInTheDocument();
   });
 
   it('keeps the latest rules response when filter requests resolve out of order', async () => {

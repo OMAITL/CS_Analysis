@@ -4,6 +4,7 @@ import { Bell, Trash2 } from 'lucide-react';
 import { Badge, Button, Card, ConfirmDialog, EmptyState, Pagination, Select } from '../common';
 import type { AlertRuleItem, AlertType } from '../../types/alerts';
 import { formatDateTime } from '../../utils/format';
+import { formatCsItemAlertTarget } from '../../utils/csAlertDisplay';
 
 export type AlertRuleEnabledFilter = 'all' | 'enabled' | 'disabled';
 export type AlertTypeFilter = 'all' | AlertType;
@@ -18,6 +19,15 @@ const ENABLED_FILTER_OPTIONS = [
   { value: 'all', label: '全部状态' },
   { value: 'enabled', label: '已启用' },
   { value: 'disabled', label: '已停用' },
+];
+
+const CS_ALERT_TYPE_FILTER_OPTIONS = [
+  { value: 'all', label: '全部类型' },
+  { value: 'cs_price_cross', label: 'CS 价格突破' },
+  { value: 'cs_pnl_threshold', label: 'CS 盈亏阈值' },
+  { value: 'cs_price_stale', label: 'CS 价格状态' },
+  { value: 'cs_concentration', label: 'CS 持仓集中度' },
+  { value: 'cs_stop_loss', label: 'CS 持仓止损' },
 ];
 
 const ALERT_TYPE_FILTER_OPTIONS = [
@@ -134,7 +144,7 @@ function formatParameters(rule: AlertRuleItem): string {
     return `${rule.parameters.direction === 'gain' ? '盈利' : '亏损'} ${rule.parameters.thresholdPct ?? '--'}%`;
   }
   if (rule.alertType === 'cs_concentration') return 'top_weight_pct';
-  if (rule.alertType === 'cs_price_stale') return 'missing good_id / market_price';
+  if (rule.alertType === 'cs_price_stale') return '缺少饰品匹配或市价';
   if (rule.alertType === 'portfolio_concentration') return 'top_weight_pct';
   if (rule.alertType === 'portfolio_drawdown') return 'max_drawdown_pct';
   if (rule.alertType === 'portfolio_price_stale') return 'price_stale / price_available';
@@ -155,7 +165,7 @@ function formatTarget(rule: AlertRuleItem): string {
     return rule.target === 'all' ? '全部 CS 持仓' : `CS 平台 ${rule.target}`;
   }
   if (rule.targetScope === 'cs_item') {
-    return `good_id ${rule.target}`;
+    return formatCsItemAlertTarget(rule);
   }
   return rule.target;
 }
@@ -180,6 +190,7 @@ interface AlertRuleListProps {
   onDelete: (rule: AlertRuleItem) => void;
   onTest: (rule: AlertRuleItem) => void;
   busyRule?: AlertRuleBusyState | null;
+  csOnly?: boolean;
 }
 
 export const AlertRuleList: React.FC<AlertRuleListProps> = ({
@@ -198,16 +209,24 @@ export const AlertRuleList: React.FC<AlertRuleListProps> = ({
   onDelete,
   onTest,
   busyRule = null,
+  csOnly = false,
 }) => {
   const [pendingDelete, setPendingDelete] = useState<AlertRuleItem | null>(null);
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const alertTypeOptions = csOnly ? CS_ALERT_TYPE_FILTER_OPTIONS : ALERT_TYPE_FILTER_OPTIONS;
   const isRuleBusy = (rule: AlertRuleItem) => busyRule?.id === rule.id;
   const isRuleActionBusy = (rule: AlertRuleItem, action: AlertRuleBusyAction) => (
     busyRule?.id === rule.id && busyRule.action === action
   );
 
   return (
-    <Card title="告警规则" subtitle={`${total} 条规则`} variant="bordered" padding="md" className={className}>
+    <Card
+      title={csOnly ? 'CS 告警规则' : '告警规则'}
+      subtitle={`${total} 条规则`}
+      variant="bordered"
+      padding="md"
+      className={className}
+    >
       <div className="mb-4 grid gap-3 md:grid-cols-2">
         <Select
           label="启停状态"
@@ -220,7 +239,7 @@ export const AlertRuleList: React.FC<AlertRuleListProps> = ({
         <Select
           label="规则类型"
           value={alertTypeFilter}
-          options={ALERT_TYPE_FILTER_OPTIONS}
+          options={alertTypeOptions}
           onChange={(value) => {
             onAlertTypeFilterChange(value as AlertTypeFilter);
           }}

@@ -60,7 +60,7 @@ export const CsHistoryList: React.FC<CsHistoryListProps> = ({
                     </Badge>
                   </div>
                   <p className="mt-1 truncate text-xs text-muted-text">
-                    {item.buySignal} · {item.platform.toUpperCase()} · #{item.goodId}
+                    {item.buySignal} · {item.platform.toUpperCase()}
                   </p>
                 </button>
                 <button

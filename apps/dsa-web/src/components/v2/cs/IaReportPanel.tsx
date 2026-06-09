@@ -45,7 +45,7 @@ export const IaReportPanel: React.FC<IaReportPanelProps> = ({
         </div>
         <div className="ia-report-panel-actions flex flex-wrap gap-2">
           <Link
-            to={`/chat?goodId=${data.goodId}&name=${encodeURIComponent(data.itemName)}&platform=${encodeURIComponent(data.platform)}`}
+            to={`/chat?name=${encodeURIComponent(data.itemName)}&platform=${encodeURIComponent(data.platform)}`}
             className="ia-btn-secondary inline-flex items-center gap-2 no-underline"
           >
             <MessageSquareQuote className="h-4 w-4" />

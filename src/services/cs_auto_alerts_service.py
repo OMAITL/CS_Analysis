@@ -31,6 +31,16 @@ class _AutoRuleSpec:
     severity: str = "warning"
 
 
+@dataclass(frozen=True)
+class _AggregatedHoldingLot:
+    good_id: int
+    platform: str
+    item_name: str
+    avg_purchase_price: float
+    total_quantity: int
+    lot_count: int
+
+
 class CSAutoAlertsService:
     """Ensure CS alert rules exist automatically; no manual /alerts setup required."""
 
@@ -162,27 +172,27 @@ class CSAutoAlertsService:
 
         rows = self.holdings_repo.list_all()
         specs: List[_AutoRuleSpec] = []
-        for row in rows:
-            good_id = getattr(row, "good_id", None)
-            purchase_price = float(getattr(row, "purchase_price", 0.0) or 0.0)
-            if good_id is None or purchase_price <= 0:
-                continue
-            platform = str(getattr(row, "platform", None) or "yyyp").lower()
-            item_name = str(getattr(row, "item_name", "") or good_id)
-            holding_id = int(getattr(row, "id", 0) or 0)
-            if holding_id <= 0:
-                continue
+        for lot in aggregate_holdings_for_price_alerts(rows):
+            purchase_price = lot.avg_purchase_price
+            item_name = lot.item_name
+            platform = lot.platform
+            good_id = lot.good_id
+            name_suffix = (
+                f" · 均价 {purchase_price:.2f}"
+                if lot.lot_count > 1
+                else ""
+            )
 
             if take_profit_pct > 0:
                 tp_price = round(purchase_price * (1.0 + take_profit_pct / 100.0), 2)
                 specs.append(
                     _AutoRuleSpec(
-                        name=f"{CS_AUTO_NAME_PREFIX}holding:{holding_id}:take_profit",
+                        name=f"{CS_AUTO_NAME_PREFIX}item:{good_id}:{platform}:take_profit",
                         target_scope="cs_item",
-                        target=str(int(good_id)),
+                        target=str(good_id),
                         alert_type="cs_price_cross",
                         parameters={"direction": "above", "price": tp_price, "platform": platform},
-                        display_name=f"CS 自动止盈 · {item_name} ≥ {tp_price}",
+                        display_name=f"CS 自动止盈 · {item_name} ≥ {tp_price}{name_suffix}",
                     )
                 )
             if stop_loss_pct > 0:
@@ -190,12 +200,12 @@ class CSAutoAlertsService:
                 if sl_price > 0:
                     specs.append(
                         _AutoRuleSpec(
-                            name=f"{CS_AUTO_NAME_PREFIX}holding:{holding_id}:stop_loss",
+                            name=f"{CS_AUTO_NAME_PREFIX}item:{good_id}:{platform}:stop_loss",
                             target_scope="cs_item",
-                            target=str(int(good_id)),
+                            target=str(good_id),
                             alert_type="cs_price_cross",
                             parameters={"direction": "below", "price": sl_price, "platform": platform},
-                            display_name=f"CS 自动止损 · {item_name} ≤ {sl_price}",
+                            display_name=f"CS 自动止损 · {item_name} ≤ {sl_price}{name_suffix}",
                             severity="critical",
                         )
                     )
@@ -220,6 +230,67 @@ class CSAutoAlertsService:
         if str(existing.severity) != spec.severity:
             updates["severity"] = spec.severity
         return updates
+
+
+def aggregate_holdings_for_price_alerts(rows: List[Any]) -> List[_AggregatedHoldingLot]:
+    """Merge duplicate good_id rows (per platform) using quantity-weighted average cost."""
+
+    buckets: Dict[Tuple[int, str], Dict[str, Any]] = {}
+    for row in rows:
+        good_id = getattr(row, "good_id", None)
+        purchase_price = float(getattr(row, "purchase_price", 0.0) or 0.0)
+        if good_id is None or purchase_price <= 0:
+            continue
+        try:
+            gid = int(good_id)
+        except (TypeError, ValueError):
+            continue
+        if gid <= 0:
+            continue
+
+        platform = str(getattr(row, "platform", None) or "yyyp").lower()
+        qty = max(1, int(getattr(row, "quantity", 1) or 1))
+        item_name = str(getattr(row, "item_name", "") or gid).strip() or str(gid)
+        key = (gid, platform)
+        bucket = buckets.get(key)
+        if bucket is None:
+            buckets[key] = {
+                "good_id": gid,
+                "platform": platform,
+                "item_name": item_name,
+                "cost_sum": purchase_price * qty,
+                "qty_sum": qty,
+                "lot_count": 1,
+            }
+            continue
+
+        bucket["cost_sum"] += purchase_price * qty
+        bucket["qty_sum"] += qty
+        bucket["lot_count"] += 1
+        if len(item_name) > len(str(bucket["item_name"])):
+            bucket["item_name"] = item_name
+
+    aggregated: List[_AggregatedHoldingLot] = []
+    for bucket in buckets.values():
+        qty_sum = int(bucket["qty_sum"])
+        if qty_sum <= 0:
+            continue
+        avg_price = float(bucket["cost_sum"]) / qty_sum
+        if avg_price <= 0:
+            continue
+        aggregated.append(
+            _AggregatedHoldingLot(
+                good_id=int(bucket["good_id"]),
+                platform=str(bucket["platform"]),
+                item_name=str(bucket["item_name"]),
+                avg_purchase_price=round(avg_price, 4),
+                total_quantity=qty_sum,
+                lot_count=int(bucket["lot_count"]),
+            )
+        )
+
+    aggregated.sort(key=lambda lot: (lot.platform, lot.good_id))
+    return aggregated
 
 
 def _load_json_dict(raw: Any) -> Dict[str, Any]:

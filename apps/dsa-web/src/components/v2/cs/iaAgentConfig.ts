@@ -30,8 +30,8 @@ export const AGENT_PIPELINE_STEPS: AgentPipelineStep[] = [
   {
     id: 'identify',
     label: '饰品识别',
-    description: '模糊搜索并锁定具体 good_id',
-    tool: 'CSQAQ get_good_id',
+    description: '模糊搜索并锁定具体饰品',
+    tool: 'CSQAQ item search',
     icon: Search,
   },
   {

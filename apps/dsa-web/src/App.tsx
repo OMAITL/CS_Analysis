@@ -13,8 +13,6 @@ import { useCsChatStore } from './stores/csChatStore';
 import './App.css';
 
 const HomePage = lazy(() => import('./pages/HomePage'));
-const StockAnalysisPage = lazy(() => import('./pages/StockAnalysisPage'));
-const BacktestPage = lazy(() => import('./pages/BacktestPage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const LoginPage = lazy(() => import('./pages/LoginPage'));
 const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
@@ -86,12 +84,10 @@ const AppContent: React.FC = () => {
         <Route path="/" element={<HomePage />} />
         <Route path="/preview" element={<Navigate to="/" replace />} />
         <Route path="/preview/chat" element={<Navigate to="/chat" replace />} />
-        <Route path="/stocks" element={<StockAnalysisPage />} />
         <Route path="/stocks/chat" element={<ChatPage />} />
         <Route path="/chat" element={<CsChatPage />} />
         <Route path="/stocks/portfolio" element={<PortfolioPage />} />
         <Route path="/portfolio" element={<CsHoldingsPage />} />
-        <Route path="/backtest" element={<BacktestPage />} />
         <Route path="/alerts" element={<AlertsPage />} />
         <Route path="/cs" element={<CsItemPage />} />
         <Route path="/settings" element={<SettingsPage />} />

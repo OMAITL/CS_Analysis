@@ -163,6 +163,7 @@ class AlertService:
         target_scope: Optional[str] = None,
         target: Optional[str] = None,
         source: Optional[str] = None,
+        cs_only: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
@@ -172,6 +173,7 @@ class AlertService:
             target_scope=target_scope,
             target=target,
             source=source,
+            cs_only=cs_only,
             page=page,
             page_size=page_size,
         )
@@ -854,6 +856,7 @@ class AlertService:
         rule_id: Optional[int] = None,
         target: Optional[str] = None,
         status: Optional[str] = None,
+        cs_only: bool = False,
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
@@ -861,6 +864,7 @@ class AlertService:
             rule_id=rule_id,
             target=target,
             status=status,
+            cs_only=cs_only,
             page=page,
             page_size=page_size,
         )

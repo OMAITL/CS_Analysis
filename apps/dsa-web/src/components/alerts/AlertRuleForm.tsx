@@ -11,7 +11,9 @@ import type {
   PortfolioStopLossMode,
 } from '../../types/alerts';
 import type { PortfolioAccountItem } from '../../types/portfolio';
+import type { CsGoodIdItem } from '../../types/cs';
 import { validateStockCode } from '../../utils/validation';
+import { CsItemSearchInput } from '../cs/CsItemSearchInput';
 import { Button, Card, Checkbox, Input, Select } from '../common';
 
 const SYMBOL_ALERT_TYPE_OPTIONS = [
@@ -47,6 +49,11 @@ const CS_HOLDINGS_ALERT_TYPE_OPTIONS = [
 
 const CS_ITEM_ALERT_TYPE_OPTIONS = [
   { value: 'cs_price_cross', label: 'CS 价格突破' },
+];
+
+const CS_TARGET_SCOPE_OPTIONS = [
+  { value: 'cs_holdings', label: 'CS 饰品持仓' },
+  { value: 'cs_item', label: 'CS 单饰品' },
 ];
 
 const TARGET_SCOPE_OPTIONS = [
@@ -106,6 +113,11 @@ const MAX_REQUESTED_DAYS = 365;
 interface AlertRuleFormProps {
   onSubmit: (payload: AlertRuleCreateRequest) => Promise<boolean | void> | boolean | void;
   isSubmitting?: boolean;
+  csOnly?: boolean;
+}
+
+function scopeOptionsForMode(csOnly: boolean) {
+  return csOnly ? CS_TARGET_SCOPE_OPTIONS : TARGET_SCOPE_OPTIONS;
 }
 
 function isPortfolioScope(scope: AlertTargetScope): boolean {
@@ -132,20 +144,25 @@ function optionsForScope(scope: AlertTargetScope) {
   return SYMBOL_ALERT_TYPE_OPTIONS;
 }
 
-export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmitting = false }) => {
+export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
+  onSubmit,
+  isSubmitting = false,
+  csOnly = false,
+}) => {
   const [name, setName] = useState('');
-  const [targetScope, setTargetScope] = useState<AlertTargetScope>('single_symbol');
+  const [targetScope, setTargetScope] = useState<AlertTargetScope>(csOnly ? 'cs_holdings' : 'single_symbol');
   const [target, setTarget] = useState('');
   const [portfolioTarget, setPortfolioTarget] = useState('all');
   const [csHoldingsTarget, setCsHoldingsTarget] = useState('all');
-  const [csGoodIdTarget, setCsGoodIdTarget] = useState('');
+  const [csItemSearchName, setCsItemSearchName] = useState('');
+  const [csItemSelected, setCsItemSelected] = useState<CsGoodIdItem | null>(null);
   const [csPricePlatform, setCsPricePlatform] = useState<'yyyp' | 'buff' | 'steam'>('yyyp');
   const [csPnlDirection, setCsPnlDirection] = useState<'loss' | 'gain'>('loss');
   const [csPnlThresholdPct, setCsPnlThresholdPct] = useState('10');
   const [marketRegion, setMarketRegion] = useState<MarketRegion>('cn');
   const [accounts, setAccounts] = useState<PortfolioAccountItem[]>([]);
   const [accountsError, setAccountsError] = useState<string | null>(null);
-  const [alertType, setAlertType] = useState<AlertType>('price_cross');
+  const [alertType, setAlertType] = useState<AlertType>(csOnly ? 'cs_stop_loss' : 'price_cross');
   const [severity, setSeverity] = useState<AlertSeverity>('warning');
   const [enabled, setEnabled] = useState(true);
   const [priceDirection, setPriceDirection] = useState<'above' | 'below'>('above');
@@ -169,7 +186,7 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!isPortfolioScope(targetScope)) return undefined;
+    if (csOnly || !isPortfolioScope(targetScope)) return undefined;
     let cancelled = false;
     void portfolioApi.getAccounts(false)
       .then((response) => {
@@ -185,9 +202,10 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     return () => {
       cancelled = true;
     };
-  }, [targetScope]);
+  }, [csOnly, targetScope]);
 
   const alertTypeOptions = useMemo(() => optionsForScope(targetScope), [targetScope]);
+  const targetScopeOptions = useMemo(() => scopeOptionsForMode(csOnly), [csOnly]);
   const portfolioTargetOptions = useMemo(() => [
     { value: 'all', label: '全部账户' },
     ...accounts.map((account) => ({
@@ -397,7 +415,8 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     setAlertType(nextType);
     setPortfolioTarget('all');
     setCsHoldingsTarget('all');
-    setCsGoodIdTarget('');
+    setCsItemSearchName('');
+    setCsItemSelected(null);
     setMarketRegion('cn');
     resetParameters(nextType);
     setFormError(null);
@@ -420,12 +439,11 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     } else if (targetScope === 'cs_holdings') {
       resolvedTarget = csHoldingsTarget;
     } else if (targetScope === 'cs_item') {
-      const parsedGoodId = Number(csGoodIdTarget);
-      if (!Number.isInteger(parsedGoodId) || parsedGoodId <= 0) {
-        setFormError('CS 单饰品目标必须是正整数 good_id');
+      if (!csItemSelected?.goodId) {
+        setFormError('请搜索并选择目标饰品');
         return;
       }
-      resolvedTarget = String(parsedGoodId);
+      resolvedTarget = String(csItemSelected.goodId);
     } else {
       resolvedTarget = portfolioTarget;
     }
@@ -461,6 +479,8 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     setDPeriod('3');
     setMarketLightStatuses(['red', 'yellow']);
     setMinDrop('10');
+    setCsItemSearchName('');
+    setCsItemSelected(null);
     resetParameters(alertType);
     setEnabled(true);
   };
@@ -516,13 +536,18 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
     }
     if (targetScope === 'cs_item') {
       return (
-        <Input
-          label="good_id"
-          value={csGoodIdTarget}
-          onChange={(event) => setCsGoodIdTarget(event.target.value)}
-          placeholder="例如 12345"
-          disabled={isSubmitting}
-        />
+        <div className="space-y-2 md:col-span-2">
+          <span className="block text-sm font-medium text-secondary-text">目标饰品</span>
+          <CsItemSearchInput
+            value={csItemSearchName}
+            onChange={setCsItemSearchName}
+            selectedItem={csItemSelected}
+            onSelect={setCsItemSelected}
+            disabled={isSubmitting}
+            ariaLabel="目标饰品"
+            placeholder="名称 / 皮肤，搜索并选择饰品"
+          />
+        </div>
       );
     }
     return (
@@ -540,20 +565,25 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({ onSubmit, isSubmit
   };
 
   return (
-    <Card title="创建告警规则" subtitle="Web 告警中心" variant="bordered" padding="md">
+    <Card
+      title={csOnly ? '创建 CS 告警规则' : '创建告警规则'}
+      subtitle={csOnly ? '饰品持仓 / 单饰品' : 'Web 告警中心'}
+      variant="bordered"
+      padding="md"
+    >
       <form className="space-y-4" noValidate onSubmit={(event) => void handleSubmit(event)}>
         <div className="grid gap-4 md:grid-cols-2">
           <Input
             label="规则名称"
             value={name}
             onChange={(event) => setName(event.target.value)}
-            placeholder="可选，例如 茅台价格突破"
+            placeholder={csOnly ? '可选，例如 AK 止盈提醒' : '可选，例如 茅台价格突破'}
             disabled={isSubmitting}
           />
           <Select
             label="目标范围"
             value={targetScope}
-            options={TARGET_SCOPE_OPTIONS}
+            options={targetScopeOptions}
             disabled={isSubmitting}
             onChange={handleScopeChange}
           />

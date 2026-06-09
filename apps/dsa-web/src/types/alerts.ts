@@ -167,6 +167,7 @@ export interface AlertRuleListQuery {
   targetScope?: AlertTargetScope;
   target?: string;
   source?: string;
+  csOnly?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -175,6 +176,7 @@ export interface AlertTriggerListQuery {
   ruleId?: number;
   target?: string;
   status?: string;
+  csOnly?: boolean;
   page?: number;
   pageSize?: number;
 }

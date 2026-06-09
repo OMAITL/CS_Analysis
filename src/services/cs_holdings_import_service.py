@@ -13,7 +13,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from src.repositories.cs_holding_import_repo import CSHoldingImportRepository
 from src.repositories.cs_holdings_repo import CSHoldingsRepository
-from src.services.cs_holdings_dedup import attach_dedup_fields, compute_dedup_key
+from src.services.cs_holdings_dedup import attach_dedup_fields, compute_dedup_key, reconcile_item_name_and_wear
 from src.services.cs_holdings_match_engine import MatchResult, match_holding_item, rematch_with_manual_good_id
 from src.services.image_cs_holdings_extractor import extract_cs_holdings_from_image
 
@@ -65,6 +65,9 @@ def _apply_match_to_draft(draft: CSHoldingDraft, match: MatchResult) -> CSHoldin
     draft.good_id = match.good_id
     if match.item_name:
         draft.item_name = match.item_name
+    item_name, wear = reconcile_item_name_and_wear(draft.item_name, draft.wear)
+    draft.item_name = item_name
+    draft.wear = wear
     draft.market_hash_name = match.market_hash_name or draft.market_hash_name
     draft.match_tier = match.match_tier
     draft.match_confidence = match.match_confidence

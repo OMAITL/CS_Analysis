@@ -67,7 +67,7 @@ export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
             onSubmit={onSubmit}
             disabled={isAnalyzing}
             hasError={inputError}
-            placeholder="名称 / 皮肤 / 商品 ID，Agent 将自动识别"
+            placeholder="名称 / 皮肤，搜索并选择饰品"
           />
         </label>
 

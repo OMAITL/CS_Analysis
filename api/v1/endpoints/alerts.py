@@ -83,6 +83,7 @@ def list_rules(
     target_scope: Optional[str] = Query(None, description="Optional target scope filter"),
     target: Optional[str] = Query(None, description="Optional target filter"),
     source: Optional[str] = Query(None, description="Optional source filter"),
+    cs_only: bool = Query(False, description="When true, only CS holdings/item rules"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> AlertRuleListResponse:
@@ -95,6 +96,7 @@ def list_rules(
                 target_scope=target_scope,
                 target=target,
                 source=source,
+                cs_only=cs_only,
                 page=page,
                 page_size=page_size,
             )
@@ -216,6 +218,7 @@ def list_triggers(
     rule_id: Optional[int] = Query(None, description="Optional rule id filter"),
     target: Optional[str] = Query(None, description="Optional target filter"),
     status: Optional[str] = Query(None, description="Optional status filter"),
+    cs_only: bool = Query(False, description="When true, only CS holdings/item triggers"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ) -> AlertTriggerListResponse:
@@ -226,6 +229,7 @@ def list_triggers(
                 rule_id=rule_id,
                 target=target,
                 status=status,
+                cs_only=cs_only,
                 page=page,
                 page_size=page_size,
             )

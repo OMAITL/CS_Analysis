@@ -11,6 +11,7 @@ import re
 import time
 from typing import Any, Dict, List, Optional, Tuple
 
+from src.services.cs_holdings_dedup import reconcile_item_name_and_wear
 from src.services.image_stock_extractor import (
     ALLOWED_MIME,
     MAX_SIZE_BYTES,
@@ -102,6 +103,7 @@ def _normalize_item(raw: Dict[str, Any]) -> Dict[str, Any]:
         item_name = " | ".join(parts)
         if wear:
             item_name = f"{item_name} ({wear})"
+    item_name, wear = reconcile_item_name_and_wear(item_name, wear)
     return {
         "item_name": item_name,
         "weapon_name": weapon,

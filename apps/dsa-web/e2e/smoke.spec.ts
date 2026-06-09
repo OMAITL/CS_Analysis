@@ -119,7 +119,7 @@ test.describe('web smoke', () => {
     }
 
     // Check if navigation is visible
-    await expect(page.getByRole('link', { name: '回测' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('link', { name: '饰品告警' })).toBeVisible({ timeout: 5000 });
   });
 
   test('settings page renders title and save actions after login', async ({ page }) => {
@@ -134,20 +134,5 @@ test.describe('web smoke', () => {
     await expect(page.getByRole('heading', { name: '系统设置' })).toBeVisible({ timeout: 10_000 });
     await expect(page.getByRole('button', { name: '重置' })).toBeVisible();
     await expect(page.getByRole('button', { name: /保存配置/ })).toBeVisible();
-  });
-
-  test('backtest page renders filter controls after login', async ({ page }) => {
-    await login(page);
-
-    // Navigate to backtest page by clicking the link
-    await page.getByRole('link', { name: '回测' }).click();
-    await page.waitForLoadState('domcontentloaded');
-    await page.waitForTimeout(1000);
-
-    // Check for filter controls
-    const filterInput = page.getByPlaceholder(/stock code/i);
-    await expect(filterInput).toBeVisible({ timeout: 10_000 });
-    await expect(page.getByRole('button', { name: /filter/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /run backtest/i })).toBeVisible();
   });
 });
