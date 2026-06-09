@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from src.config import Config, get_config
 from src.repositories.alert_repo import AlertRepository
@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 CS_AUTO_ALERT_SOURCE = "cs_auto"
 CS_AUTO_NAME_PREFIX = "cs_auto:"
+CS_AUTO_DISPLAY_NAME_PREFIX = "CS 自动"
+CS_AUTO_SYNC_PAGE_SIZE = 100
 
 
 @dataclass(frozen=True)
@@ -63,19 +65,21 @@ class CSAutoAlertsService:
     def sync(self) -> Dict[str, int]:
         """Create/update/delete cs_auto rules to match current holdings."""
         stats = {"created": 0, "updated": 0, "deleted": 0, "skipped": 0}
+        stats["deleted"] += self.cleanup_orphan_cs_item_price_rules()
         if not self.is_enabled():
             return stats
 
         expected = self._build_expected_rules()
         expected_keys = {self._rule_key(spec): spec for spec in expected}
-        existing_rows, _ = self.alert_repo.list_rules(
-            source=CS_AUTO_ALERT_SOURCE,
-            page=1,
-            page_size=1000,
-        )
+        managed_rows = self._list_managed_auto_rows()
+        stats["deleted"] += self._prune_duplicate_managed_rows(managed_rows)
+
         existing_by_key: Dict[Tuple[str, str, str, str], Any] = {}
-        for row in existing_rows:
-            existing_by_key[self._row_key(row)] = row
+        for row in managed_rows:
+            key = self._row_key(row)
+            current = existing_by_key.get(key)
+            if current is None or int(row.id) > int(current.id):
+                existing_by_key[key] = row
 
         for key, spec in expected_keys.items():
             existing = existing_by_key.get(key)
@@ -107,7 +111,7 @@ class CSAutoAlertsService:
                     logger.warning("[CSAutoAlerts] update failed for %s: %s", spec.name, exc)
                     stats["skipped"] += 1
 
-        for row in existing_rows:
+        for row in managed_rows:
             if self._row_key(row) not in expected_keys:
                 try:
                     self.alert_repo.delete_rule(int(row.id))
@@ -124,6 +128,37 @@ class CSAutoAlertsService:
                 stats["deleted"],
             )
         return stats
+
+    def cleanup_orphan_cs_item_price_rules(self) -> int:
+        """Delete cs_item price-cross rules whose good_id/platform no longer has holdings."""
+        holdings = self.holdings_repo.list_all()
+        active_lots = active_cs_item_lots(holdings)
+        active_good_ids = {good_id for good_id, _ in active_lots}
+        deleted = 0
+        page = 1
+        while True:
+            batch, total = self.alert_repo.list_rules(
+                target_scope="cs_item",
+                alert_type="cs_price_cross",
+                page=page,
+                page_size=CS_AUTO_SYNC_PAGE_SIZE,
+            )
+            for row in batch:
+                if not _is_orphan_cs_item_price_rule(row, active_lots, active_good_ids):
+                    continue
+                try:
+                    if self.alert_repo.delete_rule(int(row.id)):
+                        deleted += 1
+                except Exception as exc:
+                    logger.warning(
+                        "[CSAutoAlerts] orphan cs_item rule delete failed for %s: %s",
+                        row.id,
+                        exc,
+                    )
+            if page * CS_AUTO_SYNC_PAGE_SIZE >= total:
+                break
+            page += 1
+        return deleted
 
     def _build_expected_rules(self) -> List[_AutoRuleSpec]:
         specs: List[_AutoRuleSpec] = []
@@ -211,6 +246,52 @@ class CSAutoAlertsService:
                     )
         return specs
 
+    def _list_managed_auto_rows(self) -> List[Any]:
+        rows: List[Any] = []
+        page = 1
+        while True:
+            batch, total = self.alert_repo.list_rules(
+                cs_only=True,
+                page=page,
+                page_size=CS_AUTO_SYNC_PAGE_SIZE,
+            )
+            rows.extend(row for row in batch if self._is_managed_auto_row(row))
+            if page * CS_AUTO_SYNC_PAGE_SIZE >= total:
+                break
+            page += 1
+        return rows
+
+    @staticmethod
+    def _is_managed_auto_row(row: Any) -> bool:
+        scope = str(getattr(row, "target_scope", "") or "")
+        if scope not in {"cs_holdings", "cs_item"}:
+            return False
+        source = str(getattr(row, "source", "") or "")
+        if source == CS_AUTO_ALERT_SOURCE:
+            return True
+        name = str(getattr(row, "name", "") or "")
+        return name.startswith(CS_AUTO_DISPLAY_NAME_PREFIX)
+
+    def _prune_duplicate_managed_rows(self, rows: List[Any]) -> int:
+        grouped: Dict[Tuple[str, str, str, str], List[Any]] = {}
+        for row in rows:
+            grouped.setdefault(self._row_key(row), []).append(row)
+
+        deleted = 0
+        for group in grouped.values():
+            if len(group) <= 1:
+                continue
+            keep = max(group, key=lambda item: int(item.id))
+            for row in group:
+                if int(row.id) == int(keep.id):
+                    continue
+                try:
+                    if self.alert_repo.delete_rule(int(row.id)):
+                        deleted += 1
+                except Exception as exc:
+                    logger.warning("[CSAutoAlerts] duplicate delete failed for rule %s: %s", row.id, exc)
+        return deleted
+
     @staticmethod
     def _rule_key(spec: _AutoRuleSpec) -> Tuple[str, str, str, str]:
         canonical = json.dumps(spec.parameters or {}, ensure_ascii=False, sort_keys=True)
@@ -291,6 +372,47 @@ def aggregate_holdings_for_price_alerts(rows: List[Any]) -> List[_AggregatedHold
 
     aggregated.sort(key=lambda lot: (lot.platform, lot.good_id))
     return aggregated
+
+
+def active_cs_item_lots(rows: List[Any]) -> Set[Tuple[int, str]]:
+    """Return (good_id, platform) pairs that still exist in holdings inventory."""
+    lots: Set[Tuple[int, str]] = set()
+    for row in rows:
+        good_id = getattr(row, "good_id", None)
+        if good_id is None:
+            continue
+        try:
+            gid = int(good_id)
+        except (TypeError, ValueError):
+            continue
+        if gid <= 0:
+            continue
+        platform = str(getattr(row, "platform", None) or "yyyp").strip().lower() or "yyyp"
+        lots.add((gid, platform))
+    return lots
+
+
+def _is_orphan_cs_item_price_rule(
+    row: Any,
+    active_lots: Set[Tuple[int, str]],
+    active_good_ids: Set[int],
+) -> bool:
+    if str(getattr(row, "target_scope", "") or "") != "cs_item":
+        return False
+    if str(getattr(row, "alert_type", "") or "") != "cs_price_cross":
+        return False
+    try:
+        good_id = int(str(getattr(row, "target", "") or "").strip())
+    except (TypeError, ValueError):
+        return False
+    if good_id <= 0:
+        return False
+
+    params = _load_json_dict(getattr(row, "parameters", None))
+    platform = str(params.get("platform") or "").strip().lower()
+    if platform:
+        return (good_id, platform) not in active_lots
+    return good_id not in active_good_ids
 
 
 def _load_json_dict(raw: Any) -> Dict[str, Any]:

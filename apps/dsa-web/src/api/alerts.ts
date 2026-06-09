@@ -44,6 +44,8 @@ function toSnakeRulePayload(payload: AlertRuleCreateRequest): Record<string, unk
       mode: payload.parameters.mode,
       statuses: payload.parameters.statuses,
       min_drop: payload.parameters.minDrop,
+      threshold_pct: payload.parameters.thresholdPct,
+      platform: payload.parameters.platform,
     });
   }
   return request;
@@ -62,8 +64,8 @@ function toRuleListParams(query: AlertRuleListQuery = {}): Record<string, string
   return params;
 }
 
-function toTriggerListParams(query: AlertTriggerListQuery = {}): Record<string, string | number> {
-  const params: Record<string, string | number> = {};
+function toTriggerListParams(query: AlertTriggerListQuery = {}): Record<string, string | number | boolean> {
+  const params: Record<string, string | number | boolean> = {};
   if (query.ruleId !== undefined) params.rule_id = query.ruleId;
   if (query.target) params.target = query.target;
   if (query.status) params.status = query.status;

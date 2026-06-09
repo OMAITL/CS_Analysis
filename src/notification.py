@@ -2027,6 +2027,7 @@ class NotificationService(
         image_bytes: Optional[bytes],
         email_stock_codes: Optional[List[str]],
         email_send_to_all: bool,
+        email_subject: Optional[str] = None,
     ) -> bool:
         use_image = self._should_use_image_for_channel(channel, image_bytes)
         if channel == NotificationChannel.WECHAT:
@@ -2046,8 +2047,12 @@ class NotificationService(
             elif email_stock_codes and self._stock_email_groups:
                 receivers = self.get_receivers_for_stocks(email_stock_codes)
             if use_image:
-                return self._send_email_with_inline_image(image_bytes, receivers=receivers)
-            return self.send_to_email(content, receivers=receivers)
+                return self._send_email_with_inline_image(
+                    image_bytes,
+                    receivers=receivers,
+                    subject=email_subject,
+                )
+            return self.send_to_email(content, receivers=receivers, subject=email_subject)
         if channel == NotificationChannel.PUSHOVER:
             return self.send_to_pushover(content)
         if channel == NotificationChannel.NTFY:
@@ -2082,6 +2087,7 @@ class NotificationService(
         severity: Optional[str] = None,
         dedup_key: Optional[str] = None,
         cooldown_key: Optional[str] = None,
+        email_subject: Optional[str] = None,
     ) -> NotificationDispatchResult:
         """
         Send a notification and return per-channel diagnostics.
@@ -2102,6 +2108,7 @@ class NotificationService(
             severity: 通知严重级别；未设置时按路由类型推断
             dedup_key: 可选稳定去重 key；未设置时使用内容 hash
             cooldown_key: 可选冷却 key；未设置时使用路由/级别默认 key
+            email_subject: 邮件主题（可选；未设置时使用默认股票日报主题）
 
         Returns:
             Structured dispatch diagnostics.
@@ -2210,6 +2217,7 @@ class NotificationService(
                     image_bytes=image_bytes,
                     email_stock_codes=email_stock_codes,
                     email_send_to_all=email_send_to_all,
+                    email_subject=email_subject,
                 )
                 latency_ms = int((time.monotonic() - started_at) * 1000)
 
@@ -2271,6 +2279,7 @@ class NotificationService(
         severity: Optional[str] = None,
         dedup_key: Optional[str] = None,
         cooldown_key: Optional[str] = None,
+        email_subject: Optional[str] = None,
     ) -> bool:
         """
         统一发送接口 - 向所有已配置的渠道发送。
@@ -2286,6 +2295,7 @@ class NotificationService(
             severity=severity,
             dedup_key=dedup_key,
             cooldown_key=cooldown_key,
+            email_subject=email_subject,
         )
         return bool(result.success)
    

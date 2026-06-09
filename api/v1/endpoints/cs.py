@@ -337,6 +337,7 @@ async def cs_chat_stream(request: CSChatRequest):
                     "content": result.content,
                     "error": result.error,
                     "session_id": result.session_id,
+                    "linked_item": result.linked_item,
                 }),
                 loop,
             )
@@ -388,17 +389,32 @@ async def list_cs_chat_sessions(limit: int = 50) -> CSChatSessionsResponse:
 async def get_cs_chat_session_messages(session_id: str, limit: int = 100) -> CSChatSessionMessagesResponse:
     sid = normalize_cs_session_id(session_id)
     from src.storage import get_db
+    from src.services.cs_chat_session_binding import resolve_session_binding
 
     messages = get_db().get_conversation_messages(sid, limit=limit)
-    return CSChatSessionMessagesResponse(session_id=sid, messages=messages)
+    linked_item = resolve_session_binding(sid, messages)
+    return CSChatSessionMessagesResponse(session_id=sid, messages=messages, linked_item=linked_item)
+
+
+@router.delete("/chat/sessions/{session_id}/item")
+async def clear_cs_chat_session_item(session_id: str) -> dict:
+    sid = normalize_cs_session_id(session_id)
+    from src.services.cs_chat_session_binding import delete_session_binding
+    from src.services.cs_chat_session import clear_current_item
+
+    delete_session_binding(sid)
+    clear_current_item(sid)
+    return {"session_id": sid, "cleared": True}
 
 
 @router.delete("/chat/sessions/{session_id}")
 async def delete_cs_chat_session(session_id: str) -> dict:
     sid = normalize_cs_session_id(session_id)
     from src.storage import get_db
+    from src.services.cs_chat_session_binding import delete_session_binding
 
     count = get_db().delete_conversation_session(sid)
+    delete_session_binding(sid)
     from src.agent.conversation import conversation_manager
 
     conversation_manager.clear(sid)

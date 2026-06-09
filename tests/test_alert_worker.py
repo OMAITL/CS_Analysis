@@ -255,6 +255,9 @@ class AlertWorkerTestCase(unittest.TestCase):
             agent_event_monitor_enabled=True,
             agent_event_alert_rules_json=raw_rules,
             trading_day_check_enabled=False,
+            cs_holdings_auto_alerts_enabled=False,
+            cs_alert_ai_summary_enabled=False,
+            cs_alert_email_subject_prefix="【CS价格预警】",
         )
 
     def _create_rule(self, **overrides) -> dict:
@@ -576,6 +579,15 @@ class AlertWorkerTestCase(unittest.TestCase):
         self.assertEqual(len(triggers), 1)
         self.assertEqual(triggers[0]["target"], "000858")
         self.assertIn("No daily volume data", triggers[0]["diagnostics"])
+
+    def test_triggered_cs_item_diagnostics_dict_is_serialized_for_db(self) -> None:
+        serialized = AlertWorker._diagnostics_for_status(
+            "triggered",
+            {"diagnostics": {"good_id": 770, "platform": "yyyp"}},
+        )
+        self.assertIsInstance(serialized, str)
+        self.assertIn("good_id", serialized)
+        self.assertIn("770", serialized)
 
     def test_malformed_daily_data_response_writes_degraded_trigger(self) -> None:
         self._create_rule(
@@ -1112,9 +1124,9 @@ class AlertWorkerTestCase(unittest.TestCase):
 
         self.assertEqual(stats["triggered"], 2)
         self.assertEqual(stats["recorded"], 2)
-        self.assertEqual(stats["notified"], 1)
+        self.assertEqual(stats["notified"], 0)
         self.assertEqual(len(self._triggers(status="triggered")), 2)
-        self.assertEqual(notifier.send_with_results.call_count, 2)
+        self.assertEqual(notifier.send_with_results.call_count, 1)
 
     def test_notification_dispatch_results_are_recorded_and_success_updates_cooldown(self) -> None:
         rule = self._create_rule(target="600519", cooldown_policy={"cooldown_seconds": 60})
@@ -1470,7 +1482,7 @@ class AlertWorkerTestCase(unittest.TestCase):
         self.assertEqual(first["loaded"], 2)
         self.assertEqual(first["notified"], 2)
         self.assertEqual(second["cooldown_suppressed"], 2)
-        self.assertEqual(notifier.send_with_results.call_count, 2)
+        self.assertEqual(notifier.send_with_results.call_count, 1)
         targets = {item["target"] for item in self._triggers(status="triggered")}
         self.assertEqual(targets, {"600519", "000001"})
 

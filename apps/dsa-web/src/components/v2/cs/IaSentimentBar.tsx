@@ -34,8 +34,14 @@ export const IaSentimentSection: React.FC<{ data: import('../../../types/cs').Cs
   const report = buildReportFromData(data);
   const score = report.summary.sentimentScore ?? data.trend.signalScore;
   return (
-    <section className="ia-card ia-card-compact">
-      <h3 className="ia-section-title">市场情绪</h3>
+    <section className="ia-card ia-card-compact ia-sentiment-card">
+      <div className="ia-sentiment-head">
+        <h3 className="ia-section-title ia-section-title-inline">市场情绪</h3>
+        <div className="ia-sentiment-score-pill">
+          <strong>{Math.max(0, Math.min(100, score))}</strong>
+          <span className="ia-muted">/ 100</span>
+        </div>
+      </div>
       <IaSentimentBar score={score} />
     </section>
   );

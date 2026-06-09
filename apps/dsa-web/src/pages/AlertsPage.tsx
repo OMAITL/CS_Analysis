@@ -1,30 +1,61 @@
 import type React from 'react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { BellRing } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { alertsApi } from '../api/alerts';
+import { csApi } from '../api/cs';
 import type { ParsedApiError } from '../api/error';
 import { getParsedApiError } from '../api/error';
-import { AlertRuleForm } from '../components/alerts/AlertRuleForm';
-import {
-  AlertRuleList,
-  type AlertRuleBusyState,
-  type AlertRuleEnabledFilter,
-  type AlertTypeFilter,
-} from '../components/alerts/AlertRuleList';
-import { AlertTriggerHistory } from '../components/alerts/AlertTriggerHistory';
-import { ApiErrorAlert, AppPage, Card, EmptyState, InlineAlert, Loading, PageHeader } from '../components/common';
+import { AlertCreateDrawer } from '../components/alerts/AlertCreateDrawer';
+import { AlertImportantRules, AlertMonitorOverview } from '../components/alerts/AlertMonitorOverview';
+import { AlertMonitorRuleList, type AlertPriorityFilter, type AlertScopeFilter } from '../components/alerts/AlertMonitorRuleList';
+import { AlertAiInsightPanel } from '../components/alerts/AlertRuleMonitorCard';
+import { AlertRuleTestDialog } from '../components/alerts/AlertRuleTestDialog';
+import type { AlertRuleBusyState, AlertRuleEnabledFilter, AlertTypeFilter } from '../components/alerts/AlertRuleList';
+import type { AlertRuleFormPreset } from '../components/alerts/AlertRuleForm';
+import { ApiErrorAlert, AppPage, InlineAlert } from '../components/common';
 import type {
-  AlertNotificationItem,
   AlertRuleCreateRequest,
   AlertRuleItem,
   AlertRuleTestResponse,
+  AlertTargetScope,
   AlertTriggerItem,
-  AlertType,
 } from '../types/alerts';
-import { formatDateTime } from '../utils/format';
+import {
+  buildHoldingLookup,
+  buildMonitorStats,
+  enrichAlertRule,
+  formatDistanceDisplay,
+  pickImportantRulesByItem,
+  pickTopInsightItem,
+  priorityLabel,
+  itemMonitorKey,
+  ruleMatchesSearch,
+  sortEnrichedRules,
+  type AlertMonitorStats,
+  type CsHoldingRow,
+} from '../utils/csAlertMonitor';
 
-const PAGE_SIZE = 20;
+const PAGE_SIZE = 5;
 const CS_ALERTS_ONLY = true;
+const API_MAX_PAGE_SIZE = 100;
+
+async function fetchEnabledMonitorRules() {
+  const baseQuery = { csOnly: CS_ALERTS_ONLY, enabled: true as const, pageSize: API_MAX_PAGE_SIZE };
+  let page = 1;
+  let total = 0;
+  const items: AlertRuleItem[] = [];
+
+  while (true) {
+    const response = await alertsApi.listRules({ ...baseQuery, page });
+    total = response.total;
+    items.push(...response.items);
+    if (items.length >= total || response.items.length === 0) {
+      break;
+    }
+    page += 1;
+  }
+
+  return { items, total };
+}
 
 function enabledFilterToQuery(value: AlertRuleEnabledFilter): boolean | undefined {
   if (value === 'enabled') return true;
@@ -32,128 +63,176 @@ function enabledFilterToQuery(value: AlertRuleEnabledFilter): boolean | undefine
   return undefined;
 }
 
-function alertTypeFilterToQuery(value: AlertTypeFilter): AlertType | undefined {
+function alertTypeFilterToQuery(value: AlertTypeFilter): AlertRuleItem['alertType'] | undefined {
   return value === 'all' ? undefined : value;
 }
 
-function testVariant(result: AlertRuleTestResponse): 'success' | 'warning' | 'danger' {
-  if (result.status === 'evaluation_error') return 'danger';
-  return result.triggered ? 'success' : 'warning';
+function scopeFilterToQuery(value: AlertScopeFilter): AlertTargetScope | undefined {
+  if (value === 'cs_item' || value === 'cs_holdings') return value;
+  return undefined;
 }
 
-function renderTestResultMessage(result: AlertRuleTestResponse): React.ReactNode {
-  const targetResults = result.targetResults ?? [];
-  return (
-    <div className="space-y-2">
-      <div>
-        {result.message}
-        {' · 状态：'}
-        {result.status}
-        {' · 触发：'}
-        {result.triggered ? '是' : '否'}
-        {' · 观察值：'}
-        {result.observedValue == null ? '--' : String(result.observedValue)}
-      </div>
-      {result.evaluatedCount != null && result.evaluatedCount > 1 ? (
-        <div className="text-xs">
-          评估 {result.evaluatedCount} · 触发 {result.triggeredCount ?? 0} · 降级 {result.degradedCount ?? 0} · 跳过 {result.skippedCount ?? 0}
-        </div>
-      ) : null}
-      {targetResults.length > 1 ? (
-        <div className="grid gap-1 text-xs">
-          {targetResults.slice(0, 20).map((item) => (
-            <div key={`${item.target}-${item.status}`} className="flex flex-wrap justify-between gap-2">
-              <span>{item.displayTarget ?? item.target}</span>
-              <span>
-                {item.status}
-                {item.recordStatus ? ` / ${item.recordStatus}` : ''}
-              </span>
-            </div>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
+async function fetchAllListRules(filters: {
+  enabled?: boolean;
+  alertType?: AlertRuleItem['alertType'];
+  targetScope?: AlertTargetScope;
+}) {
+  let page = 1;
+  const items: AlertRuleItem[] = [];
+  let total = 0;
+
+  while (true) {
+    const response = await alertsApi.listRules({
+      ...filters,
+      csOnly: CS_ALERTS_ONLY,
+      page,
+      pageSize: API_MAX_PAGE_SIZE,
+    });
+    total = response.total;
+    items.push(...response.items);
+    if (items.length >= total || response.items.length === 0) {
+      break;
+    }
+    page += 1;
+  }
+
+  return { items, total };
 }
 
-const notificationChannelLabel: Record<string, string> = {
-  __cooldown__: '业务冷却',
-  __cooldown_read_failed__: '冷却读取失败',
-  __noise_suppressed__: '通知降噪',
-  __no_channel__: '无可用渠道',
-  __dispatch__: '通知调度',
-  __context__: '会话渠道',
+type AlertTestDialogState = {
+  ruleName: string;
+  result?: AlertRuleTestResponse;
+  error?: ParsedApiError;
 };
-
-function formatNotificationChannel(channel: string): string {
-  return notificationChannelLabel[channel] ?? channel;
-}
-
-function formatNotificationStatus(notification: AlertNotificationItem): string {
-  if (notification.success) return '成功';
-  if (notification.errorCode === 'cooldown_active') return '冷却抑制';
-  if (notification.errorCode === 'cooldown_read_failed') return '冷却读取失败';
-  if (notification.errorCode === 'noise_suppressed') return '降噪抑制';
-  if (notification.errorCode === 'no_channel') return '无渠道';
-  return '失败';
-}
 
 const AlertsPage: React.FC = () => {
   useEffect(() => {
-    document.title = 'CS 饰品告警 - CS 投资助手';
+    document.title = '饰品投资监控 - CS 投资助手';
   }, []);
 
   const [rules, setRules] = useState<AlertRuleItem[]>([]);
   const [rulesTotal, setRulesTotal] = useState(0);
+  const [enabledTotal, setEnabledTotal] = useState(0);
   const [rulesPage, setRulesPage] = useState(1);
   const [enabledFilter, setEnabledFilter] = useState<AlertRuleEnabledFilter>('all');
   const [alertTypeFilter, setAlertTypeFilter] = useState<AlertTypeFilter>('all');
+  const [scopeFilter, setScopeFilter] = useState<AlertScopeFilter>('all');
+  const [priorityFilter, setPriorityFilter] = useState<AlertPriorityFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [rulesLoading, setRulesLoading] = useState(false);
+  const [monitorLoading, setMonitorLoading] = useState(false);
   const [rulesError, setRulesError] = useState<ParsedApiError | null>(null);
-  const [rulesLoaded, setRulesLoaded] = useState(false);
+  const [holdingsRows, setHoldingsRows] = useState<CsHoldingRow[]>([]);
+  const [monitorRules, setMonitorRules] = useState<AlertRuleItem[]>([]);
 
   const [triggers, setTriggers] = useState<AlertTriggerItem[]>([]);
-  const [triggersLoading, setTriggersLoading] = useState(false);
-  const [triggersError, setTriggersError] = useState<ParsedApiError | null>(null);
 
-  const [notifications, setNotifications] = useState<AlertNotificationItem[]>([]);
-  const [notificationsLoading, setNotificationsLoading] = useState(false);
-  const [notificationsError, setNotificationsError] = useState<ParsedApiError | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [formPreset, setFormPreset] = useState<AlertRuleFormPreset | null>(null);
 
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<ParsedApiError | null>(null);
   const [createSuccess, setCreateSuccess] = useState<string | null>(null);
   const [busyRule, setBusyRule] = useState<AlertRuleBusyState | null>(null);
-  const [testResult, setTestResult] = useState<AlertRuleTestResponse | null>(null);
+  const [testDialog, setTestDialog] = useState<AlertTestDialogState | null>(null);
   const rulesRequestIdRef = useRef(0);
 
-  const loadRules = useCallback(async (pageOverride?: number) => {
+  const holdingLookup = useMemo(() => buildHoldingLookup(holdingsRows), [holdingsRows]);
+
+  const filteredEnrichedRules = useMemo(() => {
+    let items = sortEnrichedRules(rules.map((rule) => enrichAlertRule(rule, holdingLookup)));
+    const query = searchQuery.trim();
+    if (query) {
+      items = items.filter((item) => ruleMatchesSearch(item, query));
+    }
+    if (priorityFilter !== 'all') {
+      items = items.filter((item) => item.priority === priorityFilter);
+    }
+    return items;
+  }, [rules, holdingLookup, searchQuery, priorityFilter]);
+
+  const listTotal = filteredEnrichedRules.length;
+
+  const enrichedPageRules = useMemo(() => {
+    const start = (rulesPage - 1) * PAGE_SIZE;
+    return filteredEnrichedRules.slice(start, start + PAGE_SIZE);
+  }, [filteredEnrichedRules, rulesPage]);
+
+  useEffect(() => {
+    const maxPage = Math.max(1, Math.ceil(listTotal / PAGE_SIZE));
+    if (rulesPage > maxPage || (listTotal > 0 && enrichedPageRules.length === 0)) {
+      setRulesPage(maxPage);
+    }
+  }, [enrichedPageRules.length, listTotal, rulesPage]);
+
+  const enrichedMonitorRules = useMemo(
+    () => sortEnrichedRules(
+      monitorRules
+        .filter((rule) => rule.enabled)
+        .map((rule) => enrichAlertRule(rule, holdingLookup)),
+    ),
+    [monitorRules, holdingLookup],
+  );
+
+  const monitorStats: AlertMonitorStats = useMemo(
+    () => buildMonitorStats(rules, rulesTotal, enabledTotal, triggers, enrichedMonitorRules),
+    [enabledTotal, enrichedMonitorRules, rules, rulesTotal, triggers],
+  );
+
+  const importantRules = useMemo(
+    () => pickImportantRulesByItem(enrichedMonitorRules, 6).map((item) => {
+      const key = itemMonitorKey(item.rule);
+      const relatedCount = enrichedMonitorRules.filter(
+        (candidate) => itemMonitorKey(candidate.rule) === key
+          && (candidate.priority === 'urgent' || candidate.priority === 'watch'),
+      ).length;
+      return {
+        id: item.rule.id,
+        itemName: item.itemName,
+        ruleTypeLabel: item.ruleTypeLabel,
+        relatedCount,
+        distanceDisplay: formatDistanceDisplay(item.distancePct),
+        priorityLabel: priorityLabel(item.priority),
+        suggestion: item.aiAdvice.suggestion,
+      };
+    }),
+    [enrichedMonitorRules],
+  );
+
+  const topInsight = pickTopInsightItem(enrichedMonitorRules);
+
+  const loadMonitorContext = useCallback(async () => {
+    setMonitorLoading(true);
+    try {
+      const [enabledResp, holdingsResp] = await Promise.all([
+        fetchEnabledMonitorRules(),
+        csApi.getHoldingsSnapshot(false) as Promise<{ items?: CsHoldingRow[] }>,
+      ]);
+      setMonitorRules(enabledResp.items);
+      setEnabledTotal(enabledResp.total);
+      setHoldingsRows(holdingsResp.items ?? []);
+    } catch (error) {
+      setRulesError(getParsedApiError(error));
+    } finally {
+      setMonitorLoading(false);
+    }
+  }, []);
+
+  const loadRules = useCallback(async () => {
     const requestId = rulesRequestIdRef.current + 1;
     rulesRequestIdRef.current = requestId;
     const isLatestRequest = () => rulesRequestIdRef.current === requestId;
-    const requestedPage = pageOverride ?? rulesPage;
-    const baseQuery = {
-      enabled: enabledFilterToQuery(enabledFilter),
-      alertType: alertTypeFilterToQuery(alertTypeFilter),
-      csOnly: CS_ALERTS_ONLY,
-      pageSize: PAGE_SIZE,
-    };
     setRulesLoading(true);
     try {
-      let response = await alertsApi.listRules({ ...baseQuery, page: requestedPage });
+      const response = await fetchAllListRules({
+        enabled: enabledFilterToQuery(enabledFilter),
+        alertType: alertTypeFilterToQuery(alertTypeFilter),
+        targetScope: scopeFilterToQuery(scopeFilter),
+      });
       if (!isLatestRequest()) return null;
-      const lastPage = Math.max(1, Math.ceil(response.total / PAGE_SIZE));
-      if (response.items.length === 0 && response.total > 0 && requestedPage > lastPage) {
-        setRulesPage(lastPage);
-        response = await alertsApi.listRules({ ...baseQuery, page: lastPage });
-        if (!isLatestRequest()) return null;
-      } else if (pageOverride !== undefined && pageOverride !== rulesPage) {
-        setRulesPage(pageOverride);
-      }
       setRules(response.items);
       setRulesTotal(response.total);
       setRulesError(null);
-      setRulesLoaded(true);
       return response;
     } catch (error) {
       if (!isLatestRequest()) return null;
@@ -164,43 +243,34 @@ const AlertsPage: React.FC = () => {
         setRulesLoading(false);
       }
     }
-  }, [alertTypeFilter, enabledFilter, rulesPage]);
+  }, [alertTypeFilter, enabledFilter, scopeFilter]);
 
   const loadTriggers = useCallback(async () => {
-    setTriggersLoading(true);
     try {
       const response = await alertsApi.listTriggers({ page: 1, pageSize: PAGE_SIZE, csOnly: CS_ALERTS_ONLY });
       setTriggers(response.items);
-      setTriggersError(null);
-    } catch (error) {
-      setTriggersError(getParsedApiError(error));
-    } finally {
-      setTriggersLoading(false);
+    } catch {
+      // 触发历史不在页面展示，静默失败不影响概览统计
     }
   }, []);
 
-  const loadNotifications = useCallback(async () => {
-    setNotificationsLoading(true);
-    try {
-      const response = await alertsApi.listNotifications({ page: 1, pageSize: PAGE_SIZE });
-      setNotifications(response.items);
-      setNotificationsError(null);
-    } catch (error) {
-      setNotificationsError(getParsedApiError(error));
-    } finally {
-      setNotificationsLoading(false);
-    }
-  }, []);
+  const refreshAll = useCallback(async () => {
+    await Promise.all([loadRules(), loadMonitorContext(), loadTriggers()]);
+  }, [loadMonitorContext, loadRules, loadTriggers]);
+
+  useEffect(() => {
+    void loadMonitorContext();
+    void loadTriggers();
+  }, [loadMonitorContext, loadTriggers]);
 
   useEffect(() => {
     void loadRules();
   }, [loadRules]);
 
-  useEffect(() => {
-    if (!rulesLoaded) return;
-    void loadTriggers();
-    void loadNotifications();
-  }, [loadNotifications, loadTriggers, rulesLoaded]);
+  const openCreateDrawer = (preset?: AlertRuleFormPreset | null) => {
+    setFormPreset(preset ?? null);
+    setDrawerOpen(true);
+  };
 
   const handleCreateRule = async (payload: AlertRuleCreateRequest) => {
     setCreateLoading(true);
@@ -209,7 +279,8 @@ const AlertsPage: React.FC = () => {
     try {
       const created = await alertsApi.createRule(payload);
       setCreateSuccess(`已创建告警规则「${created.name}」`);
-      await loadRules(1);
+      await refreshAll();
+      setRulesPage(1);
       return true;
     } catch (error) {
       setCreateError(getParsedApiError(error));
@@ -219,15 +290,16 @@ const AlertsPage: React.FC = () => {
     }
   };
 
-  const handleToggleEnabled = async (rule: AlertRuleItem) => {
+  const findRuleById = (ruleId: number) => rules.find((rule) => rule.id === ruleId) ?? monitorRules.find((rule) => rule.id === ruleId);
+
+  const handleToggleEnabled = async (ruleId: number) => {
+    const rule = findRuleById(ruleId);
+    if (!rule) return;
     setBusyRule({ id: rule.id, action: 'toggle' });
     try {
-      if (rule.enabled) {
-        await alertsApi.disableRule(rule.id);
-      } else {
-        await alertsApi.enableRule(rule.id);
-      }
-      await loadRules();
+      if (rule.enabled) await alertsApi.disableRule(rule.id);
+      else await alertsApi.enableRule(rule.id);
+      await refreshAll();
     } catch (error) {
       setRulesError(getParsedApiError(error));
     } finally {
@@ -235,11 +307,11 @@ const AlertsPage: React.FC = () => {
     }
   };
 
-  const handleDeleteRule = async (rule: AlertRuleItem) => {
-    setBusyRule({ id: rule.id, action: 'delete' });
+  const handleDeleteRule = async (ruleId: number) => {
+    setBusyRule({ id: ruleId, action: 'delete' });
     try {
-      await alertsApi.deleteRule(rule.id);
-      await loadRules();
+      await alertsApi.deleteRule(ruleId);
+      await refreshAll();
     } catch (error) {
       setRulesError(getParsedApiError(error));
     } finally {
@@ -247,14 +319,15 @@ const AlertsPage: React.FC = () => {
     }
   };
 
-  const handleTestRule = async (rule: AlertRuleItem) => {
-    setBusyRule({ id: rule.id, action: 'test' });
-    setTestResult(null);
+  const handleTestRule = async (ruleId: number) => {
+    const testedRule = enrichedPageRules.find((item) => item.rule.id === ruleId);
+    const ruleName = testedRule?.rule.name ?? testedRule?.itemName ?? `规则 #${ruleId}`;
+    setBusyRule({ id: ruleId, action: 'test' });
     try {
-      const result = await alertsApi.testRule(rule.id);
-      setTestResult(result);
+      const result = await alertsApi.testRule(ruleId);
+      setTestDialog({ ruleName, result });
     } catch (error) {
-      setRulesError(getParsedApiError(error));
+      setTestDialog({ ruleName, error: getParsedApiError(error) });
     } finally {
       setBusyRule(null);
     }
@@ -262,16 +335,11 @@ const AlertsPage: React.FC = () => {
 
   return (
     <AppPage className="space-y-5">
-      <PageHeader
-        eyebrow="CS Alerts"
-        title="饰品告警"
-        description="管理 CS 饰品持仓的价格提醒与风险监控。持仓录入后会自动生成止盈/止损规则；也可在此手动补充规则，并查看触发历史。"
-      />
-
       {createError ? <ApiErrorAlert error={createError} onDismiss={() => setCreateError(null)} /> : null}
+      {rulesError ? <ApiErrorAlert error={rulesError} onDismiss={() => setRulesError(null)} /> : null}
       {createSuccess ? (
         <InlineAlert
-          title="创建成功"
+          title="操作成功"
           message={createSuccess}
           variant="success"
           action={(
@@ -281,87 +349,68 @@ const AlertsPage: React.FC = () => {
           )}
         />
       ) : null}
-      {rulesError ? <ApiErrorAlert error={rulesError} onDismiss={() => setRulesError(null)} /> : null}
 
-      <div className="grid items-stretch gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <AlertRuleForm onSubmit={handleCreateRule} isSubmitting={createLoading} csOnly={CS_ALERTS_ONLY} />
-        <div className="flex h-full min-h-0 flex-col gap-4">
-          <AlertRuleList
-            className="flex h-full min-h-0 flex-col"
-            rules={rules}
-            total={rulesTotal}
-            page={rulesPage}
-            pageSize={PAGE_SIZE}
-            isLoading={rulesLoading}
-            enabledFilter={enabledFilter}
-            alertTypeFilter={alertTypeFilter}
-            csOnly={CS_ALERTS_ONLY}
-            onEnabledFilterChange={(value) => {
-              setEnabledFilter(value);
-              setRulesPage(1);
-            }}
-            onAlertTypeFilterChange={(value) => {
-              setAlertTypeFilter(value);
-              setRulesPage(1);
-            }}
-            onPageChange={setRulesPage}
-            onToggleEnabled={(rule) => void handleToggleEnabled(rule)}
-            onDelete={(rule) => void handleDeleteRule(rule)}
-            onTest={(rule) => void handleTestRule(rule)}
-            busyRule={busyRule}
-          />
-          {testResult ? (
-            <InlineAlert
-              title="测试结果"
-              variant={testVariant(testResult)}
-              message={renderTestResultMessage(testResult)}
-            />
-          ) : null}
-        </div>
-      </div>
+      <AlertMonitorOverview stats={monitorStats} isLoading={monitorLoading || rulesLoading} />
+      <AlertImportantRules items={importantRules} />
+      <AlertAiInsightPanel topItem={topInsight} />
 
-      {triggersError ? <ApiErrorAlert error={triggersError} onDismiss={() => setTriggersError(null)} /> : null}
-      <AlertTriggerHistory triggers={triggers} isLoading={triggersLoading} />
+      <AlertMonitorRuleList
+        enrichedRules={enrichedPageRules}
+        total={listTotal}
+        page={rulesPage}
+        pageSize={PAGE_SIZE}
+        isLoading={rulesLoading}
+        enabledFilter={enabledFilter}
+        alertTypeFilter={alertTypeFilter}
+        scopeFilter={scopeFilter}
+        priorityFilter={priorityFilter}
+        searchQuery={searchQuery}
+        onCreateRule={() => openCreateDrawer()}
+        onEnabledFilterChange={(value) => {
+          setEnabledFilter(value);
+          setRulesPage(1);
+        }}
+        onAlertTypeFilterChange={(value) => {
+          setAlertTypeFilter(value);
+          setRulesPage(1);
+        }}
+        onScopeFilterChange={(value) => {
+          setScopeFilter(value);
+          setRulesPage(1);
+        }}
+        onPriorityFilterChange={(value) => {
+          setPriorityFilter(value);
+          setRulesPage(1);
+        }}
+        onSearchQueryChange={(value) => {
+          setSearchQuery(value);
+          setRulesPage(1);
+        }}
+        onPageChange={setRulesPage}
+        onToggleEnabled={(ruleId) => void handleToggleEnabled(ruleId)}
+        onDelete={(ruleId) => void handleDeleteRule(ruleId)}
+        onTest={(ruleId) => void handleTestRule(ruleId)}
+        busyRule={busyRule}
+      />
 
-      {notificationsError ? <ApiErrorAlert error={notificationsError} onDismiss={() => setNotificationsError(null)} /> : null}
-      <Card title="通知尝试记录" subtitle="通知结果" variant="bordered" padding="md">
-        {notificationsLoading ? <Loading label="正在加载通知尝试记录" /> : null}
-        {!notificationsLoading && notifications.length === 0 ? (
-          <EmptyState
-            icon={<BellRing className="h-6 w-6" />}
-            title="暂无通知尝试记录"
-            description="当前没有可展示的通知尝试明细；告警触发仍会按已配置通知渠道发送。"
-          />
-        ) : null}
-        {!notificationsLoading && notifications.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[680px] text-left text-sm">
-              <thead className="border-b border-border/60 text-xs uppercase text-muted-text">
-                <tr>
-                  <th className="px-3 py-2 font-medium">渠道</th>
-                  <th className="px-3 py-2 font-medium">状态</th>
-                  <th className="px-3 py-2 font-medium">错误码</th>
-                  <th className="px-3 py-2 font-medium">耗时</th>
-                  <th className="px-3 py-2 font-medium">时间</th>
-                  <th className="px-3 py-2 font-medium">诊断</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border/40">
-                {notifications.map((notification) => (
-                  <tr key={notification.id}>
-                    <td className="px-3 py-3">{formatNotificationChannel(notification.channel)}</td>
-                    <td className="px-3 py-3">{formatNotificationStatus(notification)}</td>
-                    <td className="px-3 py-3">{notification.errorCode ?? '--'}</td>
-                    <td className="px-3 py-3">{notification.latencyMs == null ? '--' : `${notification.latencyMs}ms`}</td>
-                    <td className="px-3 py-3">{formatDateTime(notification.createdAt)}</td>
-                    <td className="px-3 py-3">{notification.diagnostics ?? '--'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        ) : null}
-      </Card>
+      <AlertCreateDrawer
+        isOpen={drawerOpen}
+        onClose={() => {
+          setDrawerOpen(false);
+          setFormPreset(null);
+        }}
+        onSubmit={handleCreateRule}
+        isSubmitting={createLoading}
+        preset={formPreset}
+      />
+
+      <AlertRuleTestDialog
+        isOpen={testDialog != null}
+        onClose={() => setTestDialog(null)}
+        ruleName={testDialog?.ruleName}
+        result={testDialog?.result}
+        error={testDialog?.error}
+      />
     </AppPage>
   );
 };

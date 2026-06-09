@@ -84,6 +84,20 @@ class TestStorage(unittest.TestCase):
 
         DatabaseManager.reset_instance()
 
+    def test_get_chat_sessions_cs_prefix_matches_cs_uuid_sessions(self):
+        DatabaseManager.reset_instance()
+        db = DatabaseManager(db_url="sqlite:///:memory:")
+
+        db.save_conversation_message("cs_abc-123", "user", "cs chat")
+        db.save_conversation_message("cs_other-456", "user", "other cs chat")
+        db.save_conversation_message("stock_abc-123", "user", "stock chat")
+
+        sessions = db.get_chat_sessions(session_prefix="cs_")
+
+        self.assertEqual({item["session_id"] for item in sessions}, {"cs_abc-123", "cs_other-456"})
+
+        DatabaseManager.reset_instance()
+
     def test_get_chat_sessions_can_include_legacy_exact_session_id(self):
         DatabaseManager.reset_instance()
         db = DatabaseManager(db_url="sqlite:///:memory:")

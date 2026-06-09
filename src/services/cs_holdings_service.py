@@ -329,6 +329,9 @@ class CSHoldingsService:
         return refreshed
 
     def delete_holding(self, holding_id: int) -> None:
+        row = self.repo.get(holding_id)
+        if row is None:
+            raise ValueError("holding not found")
         if not self.repo.delete(holding_id):
             raise ValueError("holding not found")
         _sync_auto_alerts()

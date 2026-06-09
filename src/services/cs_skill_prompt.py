@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, List, Optional, Sequence
 
 from src.agent.skills.base import Skill, load_skill_from_yaml
 
@@ -154,6 +154,166 @@ def list_cs_skills() -> List[Dict[str, str]]:
         )
     rows.sort(key=lambda row: (row["category"], row["display_name"]))
     return rows
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def compact_sub_index_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize CSQAQ ``sub_index_data`` row from ``/api/v1/current_data``."""
+    chg_rate = _safe_float(row.get("chg_rate"))
+    return {
+        "id": row.get("id"),
+        "name": row.get("name"),
+        "market_index": _safe_float(row.get("market_index")),
+        "chg_num": _safe_float(row.get("chg_num")),
+        "chg_rate": chg_rate,
+        "change_pct": chg_rate,
+        "open": _safe_float(row.get("open")),
+        "close": _safe_float(row.get("close")),
+        "high": _safe_float(row.get("high")),
+        "low": _safe_float(row.get("low")),
+        "updated_at": row.get("updated_at"),
+    }
+
+
+def fetch_cs_home_market(*, sub_index_limit: int = 6) -> Dict[str, Any]:
+    """Dashboard snapshot aligned with https://csqaq.com/home sub-index cards."""
+    try:
+        from market_provider.csqaq.client import CSQAQClient
+
+        rows = [
+            compact_sub_index_row(dict(row))
+            for row in (CSQAQClient().list_sub_indexes() or [])
+            if isinstance(row, dict)
+        ]
+        if not rows:
+            return {}
+        main = next((row for row in rows if str(row.get("id")) == "1"), rows[0])
+        return {
+            "main_index": main,
+            "sub_indexes": rows[: max(1, int(sub_index_limit))],
+            "updated_at": main.get("updated_at"),
+        }
+    except Exception as exc:
+        logger.debug("CS home market unavailable: %s", exc)
+        return {}
+
+
+def _compact_rank_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    pct = (
+        row.get("buff_price_chg")
+        or row.get("price_diff")
+        or row.get("price_diff_7")
+        or row.get("change_pct")
+        or row.get("pct_chg")
+        or row.get("rank_rate")
+        or row.get("chg_rate")
+    )
+    price = (
+        row.get("yyyp_sell_price")
+        or row.get("sell_price")
+        or row.get("price")
+        or row.get("buff_sell_price")
+    )
+    return {
+        "good_id": row.get("good_id") or row.get("id"),
+        "name": row.get("name") or row.get("item_name"),
+        "price": _safe_float(price),
+        "change_pct": _safe_float(pct),
+        "sell_num": row.get("yyyp_sell_num") or row.get("sell_num"),
+    }
+
+
+def _fetch_cs_rank_leaders_via_browser(
+    *,
+    day_type: int,
+    limit: int,
+) -> Dict[str, Any]:
+    from crawlers.csqaq.browser_crawler import CSQAQBrowserCrawler
+
+    browser_payload = CSQAQBrowserCrawler().fetch_rank_leaders(day_type=day_type, limit=limit)
+    return {
+        "day_type": int(day_type),
+        "limit": int(limit),
+        "gainers": [
+            _compact_rank_row(dict(row))
+            for row in (browser_payload.get("gainers") or [])
+            if isinstance(row, dict)
+        ],
+        "losers": [
+            _compact_rank_row(dict(row))
+            for row in (browser_payload.get("losers") or [])
+            if isinstance(row, dict)
+        ],
+        "source": browser_payload.get("source") or "browser_rank_page",
+    }
+
+
+def fetch_cs_rank_leaders(
+    *,
+    day_type: int = 7,
+    limit: int = 5,
+) -> Dict[str, Any]:
+    """Top gainers/losers (%) from https://csqaq.com/rank (近7天 by default)."""
+    payload: Dict[str, Any] = {
+        "day_type": int(day_type),
+        "limit": int(limit),
+        "gainers": [],
+        "losers": [],
+    }
+    api_error: Optional[str] = None
+    try:
+        from market_provider.csqaq.client import CSQAQClient
+
+        client = CSQAQClient(timeout=8.0)
+        for rank_type, key in ((1, "gainers"), (2, "losers")):
+            try:
+                response = client.get_rank_list(
+                    rank_type=rank_type,
+                    day_type=day_type,
+                    page_index=1,
+                    page_size=max(1, int(limit)),
+                )
+                rows = list(response.get("data") or response.get("list") or [])
+                if isinstance(response.get("data"), dict):
+                    rows = list(response["data"].get("data") or [])
+                payload[key] = [
+                    _compact_rank_row(dict(row))
+                    for row in rows[: max(1, int(limit))]
+                    if isinstance(row, dict)
+                ]
+            except Exception as exc:
+                api_error = str(exc)
+                logger.warning("CS rank API fetch failed rank_type=%s: %s", rank_type, exc)
+    except Exception as exc:
+        api_error = str(exc)
+        logger.debug("CS rank API unavailable: %s", exc)
+
+    if payload["gainers"] or payload["losers"]:
+        payload["source"] = "csqaq_api"
+        return payload
+
+    try:
+        browser_payload = _fetch_cs_rank_leaders_via_browser(day_type=day_type, limit=limit)
+        if browser_payload.get("gainers") or browser_payload.get("losers"):
+            return browser_payload
+        payload["error"] = api_error or "rank list empty from browser"
+        return payload
+    except ImportError as exc:
+        logger.warning("CS rank browser fallback unavailable (playwright): %s", exc)
+        payload["error"] = api_error or str(exc)
+        return payload
+    except Exception as exc:
+        logger.warning("CS rank browser fallback failed: %s", exc)
+        payload["error"] = api_error or str(exc)
+        return payload
 
 
 def fetch_cs_index_summary(*, sub_index_id: str = "1", period: int = 30) -> Dict[str, object]:

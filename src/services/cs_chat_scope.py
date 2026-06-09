@@ -71,6 +71,7 @@ def _fetch_market_context(message: str = "") -> Dict[str, Any]:
 
     try:
         from market_provider.csqaq.client import CSQAQClient
+        from src.services.cs_skill_prompt import compact_sub_index_row
 
         client = CSQAQClient()
         indexes = client.list_sub_indexes()
@@ -78,12 +79,14 @@ def _fetch_market_context(message: str = "") -> Dict[str, Any]:
         for row in indexes[:12]:
             if not isinstance(row, dict):
                 continue
+            normalized = compact_sub_index_row(row)
             compact.append(
                 {
-                    "id": row.get("id"),
-                    "name": row.get("name"),
-                    "price": row.get("price") or row.get("sell_price") or row.get("close"),
-                    "change": row.get("change") or row.get("change_percent") or row.get("pct_chg"),
+                    "id": normalized.get("id"),
+                    "name": normalized.get("name"),
+                    "price": normalized.get("market_index") or normalized.get("close"),
+                    "change": normalized.get("chg_rate") or normalized.get("change_pct"),
+                    "chg_num": normalized.get("chg_num"),
                 }
             )
         if compact:

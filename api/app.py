@@ -140,6 +140,7 @@ def _should_run_alert_worker(config) -> bool:
 def _alert_worker_loop(stop_event: threading.Event, interval_seconds: int) -> None:
     from src.config import get_config
     from src.services.alert_worker import AlertWorker
+    from src.services.cs_daily_report_service import maybe_run_cs_daily_report
 
     worker = AlertWorker(config_provider=get_config)
     while not stop_event.is_set():
@@ -148,6 +149,7 @@ def _alert_worker_loop(stop_event: threading.Event, interval_seconds: int) -> No
             triggered = int(stats.get("triggered") or 0)
             if triggered:
                 logger.info("[AlertWorker] background cycle triggered=%s", triggered)
+            maybe_run_cs_daily_report(config=get_config())
         except Exception:
             logger.exception("[AlertWorker] background cycle failed")
         if stop_event.wait(max(30, interval_seconds)):

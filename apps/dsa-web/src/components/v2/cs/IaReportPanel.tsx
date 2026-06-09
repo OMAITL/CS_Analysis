@@ -39,9 +39,11 @@ export const IaReportPanel: React.FC<IaReportPanelProps> = ({
   return (
     <div className="ia-report-panel">
       <div className="ia-report-panel-head">
-        <div>
+        <div className="ia-report-panel-head-text">
           <p className="ia-report-panel-kicker">分析报告</p>
-          <h2 className="ia-report-panel-title">{data.itemName}</h2>
+          {data.itemName ? (
+            <p className="ia-report-panel-subtitle">{data.itemName}</p>
+          ) : null}
         </div>
         <div className="ia-report-panel-actions flex flex-wrap gap-2">
           <Link

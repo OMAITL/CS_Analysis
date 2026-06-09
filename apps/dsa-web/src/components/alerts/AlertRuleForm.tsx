@@ -114,7 +114,13 @@ interface AlertRuleFormProps {
   onSubmit: (payload: AlertRuleCreateRequest) => Promise<boolean | void> | boolean | void;
   isSubmitting?: boolean;
   csOnly?: boolean;
+  embedded?: boolean;
+  preset?: AlertRuleFormPreset | null;
 }
+
+export type AlertRuleFormPreset = Partial<AlertRuleCreateRequest> & {
+  presetKey?: string;
+};
 
 function scopeOptionsForMode(csOnly: boolean) {
   return csOnly ? CS_TARGET_SCOPE_OPTIONS : TARGET_SCOPE_OPTIONS;
@@ -124,16 +130,42 @@ function isPortfolioScope(scope: AlertTargetScope): boolean {
   return scope === 'portfolio_holdings' || scope === 'portfolio_account';
 }
 
-function isCsScope(scope: AlertTargetScope): boolean {
-  return scope === 'cs_holdings' || scope === 'cs_item';
-}
-
 function defaultAlertTypeForScope(scope: AlertTargetScope): AlertType {
   if (scope === 'market') return 'market_light_status';
   if (scope === 'portfolio_account') return 'portfolio_stop_loss';
   if (scope === 'cs_holdings') return 'cs_stop_loss';
   if (scope === 'cs_item') return 'cs_price_cross';
   return 'price_cross';
+}
+
+function readFormDefaults(csOnly: boolean, preset: AlertRuleFormPreset | null) {
+  const scope = preset?.targetScope ?? (csOnly ? 'cs_holdings' : 'single_symbol');
+  const alertType = preset?.alertType ?? defaultAlertTypeForScope(scope);
+  const params = preset?.parameters ?? {};
+  const priceDirection = params.direction === 'above' || params.direction === 'below' ? params.direction : 'above';
+  const csPnlDirection = params.direction === 'gain' || params.direction === 'loss' ? params.direction : 'loss';
+
+  return {
+    name: preset?.name ?? '',
+    targetScope: scope,
+    target: preset?.target && scope !== 'cs_item' && scope !== 'cs_holdings'
+      && scope !== 'portfolio_holdings' && scope !== 'portfolio_account'
+      ? preset.target
+      : '',
+    portfolioTarget: preset?.target && (scope === 'portfolio_holdings' || scope === 'portfolio_account')
+      ? preset.target
+      : 'all',
+    csHoldingsTarget: preset?.target && scope === 'cs_holdings' ? preset.target : 'all',
+    alertType,
+    severity: preset?.severity ?? 'warning' as AlertSeverity,
+    enabled: preset?.enabled ?? true,
+    priceDirection,
+    stopLossMode: params.mode ?? 'near' as PortfolioStopLossMode,
+    price: params.price != null ? String(params.price) : '',
+    csPnlDirection,
+    csPnlThresholdPct: params.thresholdPct != null ? String(params.thresholdPct) : '10',
+    csPricePlatform: params.platform ?? 'yyyp' as 'yyyp' | 'buff' | 'steam',
+  };
 }
 
 function optionsForScope(scope: AlertTargetScope) {
@@ -148,29 +180,32 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
   onSubmit,
   isSubmitting = false,
   csOnly = false,
+  embedded = false,
+  preset = null,
 }) => {
-  const [name, setName] = useState('');
-  const [targetScope, setTargetScope] = useState<AlertTargetScope>(csOnly ? 'cs_holdings' : 'single_symbol');
-  const [target, setTarget] = useState('');
-  const [portfolioTarget, setPortfolioTarget] = useState('all');
-  const [csHoldingsTarget, setCsHoldingsTarget] = useState('all');
+  const defaults = readFormDefaults(csOnly, preset);
+  const [name, setName] = useState(defaults.name);
+  const [targetScope, setTargetScope] = useState<AlertTargetScope>(defaults.targetScope);
+  const [target, setTarget] = useState(defaults.target);
+  const [portfolioTarget, setPortfolioTarget] = useState(defaults.portfolioTarget);
+  const [csHoldingsTarget, setCsHoldingsTarget] = useState(defaults.csHoldingsTarget);
   const [csItemSearchName, setCsItemSearchName] = useState('');
   const [csItemSelected, setCsItemSelected] = useState<CsGoodIdItem | null>(null);
-  const [csPricePlatform, setCsPricePlatform] = useState<'yyyp' | 'buff' | 'steam'>('yyyp');
-  const [csPnlDirection, setCsPnlDirection] = useState<'loss' | 'gain'>('loss');
-  const [csPnlThresholdPct, setCsPnlThresholdPct] = useState('10');
+  const [csPricePlatform, setCsPricePlatform] = useState<'yyyp' | 'buff' | 'steam'>(defaults.csPricePlatform);
+  const [csPnlDirection, setCsPnlDirection] = useState<'loss' | 'gain'>(defaults.csPnlDirection);
+  const [csPnlThresholdPct, setCsPnlThresholdPct] = useState(defaults.csPnlThresholdPct);
   const [marketRegion, setMarketRegion] = useState<MarketRegion>('cn');
   const [accounts, setAccounts] = useState<PortfolioAccountItem[]>([]);
   const [accountsError, setAccountsError] = useState<string | null>(null);
-  const [alertType, setAlertType] = useState<AlertType>(csOnly ? 'cs_stop_loss' : 'price_cross');
-  const [severity, setSeverity] = useState<AlertSeverity>('warning');
-  const [enabled, setEnabled] = useState(true);
-  const [priceDirection, setPriceDirection] = useState<'above' | 'below'>('above');
+  const [alertType, setAlertType] = useState<AlertType>(defaults.alertType);
+  const [severity, setSeverity] = useState<AlertSeverity>(defaults.severity);
+  const [enabled, setEnabled] = useState(defaults.enabled);
+  const [priceDirection, setPriceDirection] = useState<'above' | 'below'>(defaults.priceDirection);
   const [changeDirection, setChangeDirection] = useState<'up' | 'down'>('up');
   const [thresholdDirection, setThresholdDirection] = useState<'above' | 'below'>('above');
   const [crossDirection, setCrossDirection] = useState<'bullish_cross' | 'bearish_cross'>('bullish_cross');
-  const [stopLossMode, setStopLossMode] = useState<PortfolioStopLossMode>('near');
-  const [price, setPrice] = useState('');
+  const [stopLossMode, setStopLossMode] = useState<PortfolioStopLossMode>(defaults.stopLossMode);
+  const [price, setPrice] = useState(defaults.price);
   const [changePct, setChangePct] = useState('');
   const [multiplier, setMultiplier] = useState('');
   const [window, setWindow] = useState('20');
@@ -564,14 +599,8 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
     );
   };
 
-  return (
-    <Card
-      title={csOnly ? '创建 CS 告警规则' : '创建告警规则'}
-      subtitle={csOnly ? '饰品持仓 / 单饰品' : 'Web 告警中心'}
-      variant="bordered"
-      padding="md"
-    >
-      <form className="space-y-4" noValidate onSubmit={(event) => void handleSubmit(event)}>
+  const formBody = (
+    <form className="space-y-4" noValidate onSubmit={(event) => void handleSubmit(event)}>
         <div className="grid gap-4 md:grid-cols-2">
           <Input
             label="规则名称"
@@ -939,6 +968,16 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
         </div>
         {formError ? <p role="alert" className="text-sm text-danger">{formError}</p> : null}
       </form>
+  );
+
+  return embedded ? formBody : (
+    <Card
+      title={csOnly ? '创建 CS 告警规则' : '创建告警规则'}
+      subtitle={csOnly ? '饰品持仓 / 单饰品' : 'Web 告警中心'}
+      variant="bordered"
+      padding="md"
+    >
+      {formBody}
     </Card>
   );
 };

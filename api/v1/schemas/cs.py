@@ -268,6 +268,7 @@ class CSChatSessionsResponse(BaseModel):
 class CSChatSessionMessagesResponse(BaseModel):
     session_id: str
     messages: List[Dict[str, Any]] = Field(default_factory=list)
+    linked_item: Optional[Dict[str, Any]] = None
 
 
 class CSHoldingCreateRequest(BaseModel):

@@ -936,8 +936,11 @@ def main() -> int:
                 run_full_analysis(runtime_config, args, scheduled_stock_codes)
 
             background_tasks = []
-            if getattr(config, 'agent_event_monitor_enabled', False):
+            if getattr(config, 'agent_event_monitor_enabled', False) or getattr(
+                config, 'cs_holdings_auto_alerts_enabled', False
+            ):
                 from src.services.alert_worker import AlertWorker
+                from src.services.cs_daily_report_service import maybe_run_cs_daily_report
 
                 interval_minutes = max(1, getattr(config, 'agent_event_monitor_interval_minutes', 5))
                 alert_worker = AlertWorker(config_provider=_reload_runtime_config)
@@ -947,6 +950,7 @@ def main() -> int:
                     triggered_count = stats.get("triggered", 0)
                     if triggered_count:
                         logger.info("[EventMonitor] 本轮触发 %d 条提醒", triggered_count)
+                    maybe_run_cs_daily_report(config=_reload_runtime_config())
 
                 background_tasks.append({
                     "task": event_monitor_task,

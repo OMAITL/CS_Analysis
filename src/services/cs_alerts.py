@@ -210,6 +210,43 @@ def evaluate_cs_holdings_alert(
     )
 
 
+def _format_price_fetch_error(exc: Exception) -> str:
+    text = str(exc)
+    if "401" in text and "Unauthorized" in text:
+        return (
+            "CSQAQ 鉴权失败(401)：请检查 .env 中 CSQAQ_API_TOKEN，"
+            "并在 CSQAQ 用户中心将当前公网 IP 加入白名单后重启后端"
+        )
+    return f"price fetch failed: {exc}"
+
+
+def _lookup_cached_holdings_price(
+    good_id: int,
+    platform: str,
+    holdings_service: Optional[CSHoldingsService],
+) -> Optional[float]:
+    service = holdings_service or CSHoldingsService()
+    snapshot = service.get_snapshot(refresh_prices=False)
+    for item in snapshot.get("items") or []:
+        try:
+            gid = int(item.get("good_id"))
+        except (TypeError, ValueError):
+            continue
+        if gid != good_id:
+            continue
+        item_platform = str(item.get("platform") or "yyyp").lower()
+        if item_platform != platform.lower():
+            continue
+        market_price = item.get("market_price")
+        if market_price is None:
+            continue
+        try:
+            return float(market_price)
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
 def _evaluate_price_cross(
     rule: CSHoldingsAlert,
     *,
@@ -230,20 +267,28 @@ def _evaluate_price_cross(
             record_status="failed",
         )
 
+    price_source = "csqaq"
+    fetch_error: Optional[str] = None
+    observed: Optional[float] = None
     try:
         client = CSQAQClient()
         snapshot = fetch_item_snapshot(client, good_id)
         observed = _pick_market_price(snapshot, platform)
     except Exception as exc:
-        return _cs_result(
-            rule,
-            triggered=False,
-            observed_value=None,
-            threshold=threshold,
-            message=f"price fetch failed: {exc}",
-            record_status="failed",
-            data_source="csqaq",
-        )
+        fetch_error = str(exc)
+        observed = _lookup_cached_holdings_price(good_id, platform, holdings_service)
+        price_source = "holdings_cache"
+        if observed is None:
+            return _cs_result(
+                rule,
+                triggered=False,
+                observed_value=None,
+                threshold=threshold,
+                message=_format_price_fetch_error(exc),
+                record_status="failed",
+                data_source="csqaq",
+                diagnostics={"good_id": good_id, "platform": platform, "fetch_error": fetch_error},
+            )
 
     if observed is None:
         return _cs_result(
@@ -253,7 +298,7 @@ def _evaluate_price_cross(
             threshold=threshold,
             message=f"cs_item {good_id} price unavailable on {platform}",
             record_status="degraded",
-            data_source="csqaq",
+            data_source=price_source,
         )
 
     triggered = observed >= threshold if direction == "above" else observed <= threshold
@@ -262,14 +307,23 @@ def _evaluate_price_cross(
         if triggered
         else f"CS item {good_id} price {observed:.2f} not {direction} {threshold:.2f}"
     )
+    if fetch_error:
+        message = f"{message} (cached price; CSQAQ unavailable)"
     return _cs_result(
         rule,
         triggered=triggered,
         observed_value=float(observed),
         threshold=threshold,
         message=message,
-        data_source="csqaq",
-        diagnostics={"good_id": good_id, "platform": platform, "direction": direction},
+        record_status="degraded" if fetch_error else None,
+        data_source=price_source,
+        diagnostics={
+            "good_id": good_id,
+            "platform": platform,
+            "direction": direction,
+            "price_source": price_source,
+            **({"fetch_error": fetch_error} if fetch_error else {}),
+        },
     )
 
 
@@ -427,8 +481,8 @@ def _cs_result(
     data_source: Optional[str] = None,
     data_timestamp: Optional[Any] = None,
 ) -> Dict[str, Any]:
-    if record_status is None:
-        record_status = "triggered" if triggered else "not_triggered"
+    if triggered and record_status is None:
+        record_status = "triggered"
     return {
         "rule_id": int(rule.metadata.get("persisted_rule_id", 0) or 0),
         "status": "triggered" if triggered else "not_triggered",

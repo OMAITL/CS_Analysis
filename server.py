@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     uvicorn.run(
         "server:app",
-        host="0.0.0.0",
-        port=8000,
+        host=config.webui_host or "0.0.0.0",
+        port=config.webui_port,
         reload=True,
     )

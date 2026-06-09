@@ -3,12 +3,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import Markdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { MessageSquarePlus, Send } from 'lucide-react';
+import { MessageSquarePlus, Send, Trash2, X } from 'lucide-react';
 import { csApi, type CsChatStreamRequest } from '../api/cs';
-import { ApiErrorAlert } from '../components/common';
-import { useCsChatStore, type ProgressStep } from '../stores/csChatStore';
+import { ApiErrorAlert, ConfirmDialog } from '../components/common';
+import { useCsChatStore, type CsSessionItemBinding, type ProgressStep } from '../stores/csChatStore';
 import type { CsSkillInfo } from '../types/csHome';
 import type { CsItemAnalyzeResponse } from '../types/cs';
+import { normalizeChatAssistantMarkdown } from '../utils/chatMarkdown';
 import '../styles/ia-v2.css';
 
 type ChatAnswerScope = 'market' | 'portfolio' | 'single_item' | 'general';
@@ -23,6 +24,23 @@ const CS_QUICK_QUESTIONS: Array<{ label: string; skill: string; scope: ChatAnswe
 ];
 
 const MAX_SELECTED_SKILLS = 3;
+const CS_HOME_HISTORY_KEY = 'dsa_cs_home_history_v1';
+const CS_FOLLOWUP_DISMISS_KEY = 'dsa_cs_chat_followup_dismissed_v1';
+
+function readFollowUpDismissed(): boolean {
+  if (typeof sessionStorage === 'undefined') {
+    return false;
+  }
+  return sessionStorage.getItem(CS_FOLLOWUP_DISMISS_KEY) === '1';
+}
+
+function persistFollowUpDismissed(): void {
+  sessionStorage.setItem(CS_FOLLOWUP_DISMISS_KEY, '1');
+}
+
+function clearFollowUpDismissed(): void {
+  sessionStorage.removeItem(CS_FOLLOWUP_DISMISS_KEY);
+}
 
 function getCurrentStage(steps: ProgressStep[]): string {
   if (steps.length === 0) return '正在连接 Agent…';
@@ -53,7 +71,7 @@ function buildFollowUpContext(data: CsItemAnalyzeResponse | null) {
 
 function readFollowUpFromStorage(): CsItemAnalyzeResponse | null {
   try {
-    const raw = localStorage.getItem('dsa_cs_home_history_v1');
+    const raw = localStorage.getItem(CS_HOME_HISTORY_KEY);
     if (!raw) return null;
     const items = JSON.parse(raw) as Array<{ result?: CsItemAnalyzeResponse }>;
     return items[0]?.result ?? null;
@@ -62,30 +80,41 @@ function readFollowUpFromStorage(): CsItemAnalyzeResponse | null {
   }
 }
 
+function resolvePendingFollowUpContext(searchParams: URLSearchParams): CsChatStreamRequest['context'] | undefined {
+  const goodId = searchParams.get('goodId');
+  const name = searchParams.get('name') ?? searchParams.get('item');
+  const platform = searchParams.get('platform');
+  const summary = searchParams.get('summary');
+
+  if (goodId || name) {
+    return {
+      good_id: goodId ? Number.parseInt(goodId, 10) : undefined,
+      item_name: name ?? undefined,
+      platform: platform ?? undefined,
+      previous_analysis_summary: summary ?? undefined,
+    };
+  }
+
+  if (readFollowUpDismissed()) {
+    return undefined;
+  }
+
+  return buildFollowUpContext(readFollowUpFromStorage());
+}
+
 const CsChatPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [input, setInput] = useState('');
   const [skills, setSkills] = useState<CsSkillInfo[]>([]);
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
+  const [followUpDismissed, setFollowUpDismissed] = useState(() => readFollowUpDismissed());
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const followUpContext = useMemo((): CsChatStreamRequest['context'] | undefined => {
-    const goodId = searchParams.get('goodId');
-    const name = searchParams.get('name') ?? searchParams.get('item');
-    const platform = searchParams.get('platform');
-    const summary = searchParams.get('summary');
-
-    if (goodId || name) {
-      return {
-        good_id: goodId ? Number.parseInt(goodId, 10) : undefined,
-        item_name: name ?? undefined,
-        platform: platform ?? undefined,
-        previous_analysis_summary: summary ?? undefined,
-      };
-    }
-
-    return buildFollowUpContext(readFollowUpFromStorage());
-  }, [searchParams]);
+  const pendingFollowUpContext = useMemo(
+    () => resolvePendingFollowUpContext(searchParams),
+    [searchParams],
+  );
 
   const messages = useCsChatStore((s) => s.messages);
   const loading = useCsChatStore((s) => s.loading);
@@ -93,17 +122,58 @@ const CsChatPage: React.FC = () => {
   const sessionId = useCsChatStore((s) => s.sessionId);
   const sessions = useCsChatStore((s) => s.sessions);
   const chatError = useCsChatStore((s) => s.chatError);
+  const sessionItemBindings = useCsChatStore((s) => s.sessionItemBindings);
   const startStream = useCsChatStore((s) => s.startStream);
   const startNewChat = useCsChatStore((s) => s.startNewChat);
   const loadInitialSession = useCsChatStore((s) => s.loadInitialSession);
   const switchSession = useCsChatStore((s) => s.switchSession);
+  const deleteSession = useCsChatStore((s) => s.deleteSession);
+  const setSessionItemBinding = useCsChatStore((s) => s.setSessionItemBinding);
   const clearCompletionBadge = useCsChatStore((s) => s.clearCompletionBadge);
+
+  const followUpContext = useMemo((): CsChatStreamRequest['context'] | undefined => {
+    const sessionBinding = sessionItemBindings[sessionId];
+    if (sessionBinding?.item_name || sessionBinding?.good_id != null) {
+      return sessionBinding;
+    }
+    if (messages.length > 0) {
+      return undefined;
+    }
+    const isExistingSession = sessions.some(
+      (session) => session.session_id === sessionId && session.message_count > 0,
+    );
+    if (isExistingSession || followUpDismissed) {
+      return undefined;
+    }
+    const pending = pendingFollowUpContext;
+    if (pending?.item_name || pending?.good_id != null) {
+      return pending;
+    }
+    return undefined;
+  }, [
+    followUpDismissed,
+    messages.length,
+    pendingFollowUpContext,
+    sessionId,
+    sessionItemBindings,
+    sessions,
+  ]);
 
   useEffect(() => {
     document.title = '问饰品 - CS 投资助手';
     void loadInitialSession();
     clearCompletionBadge();
   }, [clearCompletionBadge, loadInitialSession]);
+
+  useEffect(() => {
+    const hasExplicitItem = Boolean(
+      searchParams.get('goodId') || searchParams.get('name') || searchParams.get('item'),
+    );
+    if (hasExplicitItem) {
+      setFollowUpDismissed(false);
+      clearFollowUpDismissed();
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -186,10 +256,14 @@ const CsChatPage: React.FC = () => {
       const usedSkillIds = normalizeSelectedSkillIds(overrideSkillIds ?? selectedSkillIds);
       const usedSkillNames = usedSkillIds.length > 0 ? getSkillNames(usedSkillIds) : ['通用'];
       const requestContext = buildRequestContext(overrideScope);
+      const bindingToPersist = resolveBindingToPersist(followUpContext, requestContext);
 
       setInput('');
       if (searchParams.toString()) {
         setSearchParams({}, { replace: true });
+      }
+      if (bindingToPersist) {
+        setSessionItemBinding(sessionId, bindingToPersist);
       }
 
       await startStream(
@@ -204,6 +278,7 @@ const CsChatPage: React.FC = () => {
     },
     [
       buildRequestContext,
+      followUpContext,
       getSkillNames,
       input,
       loading,
@@ -212,6 +287,7 @@ const CsChatPage: React.FC = () => {
       selectedSkillIds,
       sessionId,
       setSearchParams,
+      setSessionItemBinding,
       startStream,
     ],
   );
@@ -230,6 +306,31 @@ const CsChatPage: React.FC = () => {
       return [...prev, skillId];
     });
   };
+
+  const handleClearFollowUp = useCallback(() => {
+    setFollowUpDismissed(true);
+    persistFollowUpDismissed();
+    setSessionItemBinding(sessionId, null);
+    void csApi.clearChatSessionItem(sessionId).catch(() => {
+      // ignore
+    });
+    if (searchParams.toString()) {
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, sessionId, setSearchParams, setSessionItemBinding]);
+
+  const handleConfirmDeleteSession = useCallback(async () => {
+    if (!deleteConfirmId) {
+      return;
+    }
+    try {
+      await deleteSession(deleteConfirmId);
+    } catch {
+      // ignore
+    } finally {
+      setDeleteConfirmId(null);
+    }
+  }, [deleteConfirmId, deleteSession]);
 
   const hasMessages = messages.length > 0;
   const contextHint = followUpContext?.item_name;
@@ -252,14 +353,27 @@ const CsChatPage: React.FC = () => {
               <p className="ia-muted text-xs px-2">暂无历史会话</p>
             ) : (
               sessions.map((session) => (
-                <button
+                <div
                   key={session.session_id}
-                  type="button"
-                  className={`ia-chat-session-item ${session.session_id === sessionId ? 'active' : ''}`}
-                  onClick={() => void switchSession(session.session_id)}
+                  className={`ia-chat-session-row ${session.session_id === sessionId ? 'active' : ''}`}
                 >
-                  {session.title || '新对话'}
-                </button>
+                  <button
+                    type="button"
+                    className="ia-chat-session-item"
+                    onClick={() => void switchSession(session.session_id)}
+                  >
+                    {session.title || '新对话'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ia-chat-session-delete"
+                    onClick={() => setDeleteConfirmId(session.session_id)}
+                    aria-label={`删除会话 ${session.title || '新对话'}`}
+                    title="删除会话"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -282,21 +396,35 @@ const CsChatPage: React.FC = () => {
                 <Link to="/" className="ia-link">饰品工作台</Link>
                 。
               </p>
-              {contextHint ? (
-                <p className="ia-context-hint text-sm">
-                  已关联饰品：
-                  <strong>{contextHint}</strong>
-                  （追问具体饰品时会结合行情快照；问「哪些饰品 / 全市场 / 我持仓」时将自动切换作答范围）
-                </p>
-              ) : (
+              {!contextHint ? (
                 <p className="ia-muted text-xs">
                   支持按问题自动区分：全市场泛问、持仓专属、单品深度追问。
                 </p>
-              )}
+              ) : null}
             </div>
           ) : null}
 
           <div className="ia-chat-messages flex-1 overflow-y-auto" data-testid="chat-message-scroll">
+            {contextHint ? (
+              <div className="ia-context-hint ia-context-hint-bar ia-context-hint-in-chat">
+                <div className="ia-context-hint-body">
+                  <span className="ia-context-hint-label">已关联饰品</span>
+                  <strong>{contextHint}</strong>
+                  <span className="ia-context-hint-note">
+                    追问时会结合行情快照；问「哪些饰品 / 全市场 / 我持仓」时将自动切换范围
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="ia-context-hint-dismiss"
+                  onClick={handleClearFollowUp}
+                  aria-label="取消关联饰品"
+                  title="取消关联"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : null}
             {messages.map((msg) => (
               <div
                 key={msg.id}
@@ -305,7 +433,11 @@ const CsChatPage: React.FC = () => {
                 }`}
               >
                 {msg.role === 'assistant' ? (
-                  <Markdown remarkPlugins={[remarkGfm]}>{msg.content || (loading ? '思考中…' : '')}</Markdown>
+                  <div className="ia-chat-prose">
+                    <Markdown remarkPlugins={[remarkGfm]}>
+                      {normalizeChatAssistantMarkdown(msg.content || (loading ? '思考中…' : ''))}
+                    </Markdown>
+                  </div>
                 ) : (
                   msg.content
                 )}
@@ -390,8 +522,37 @@ const CsChatPage: React.FC = () => {
           </details>
         </div>
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(deleteConfirmId)}
+        title="删除会话"
+        message="删除后无法恢复，该会话的消息记录将被永久移除。"
+        confirmText="删除"
+        cancelText="取消"
+        isDanger
+        onConfirm={() => void handleConfirmDeleteSession()}
+        onCancel={() => setDeleteConfirmId(null)}
+      />
     </div>
   );
 };
+
+function resolveBindingToPersist(
+  followUpContext: CsChatStreamRequest['context'] | undefined,
+  requestContext: CsChatStreamRequest['context'] | undefined,
+): CsSessionItemBinding | null {
+  const candidate = requestContext?.item_name || requestContext?.good_id != null
+    ? requestContext
+    : followUpContext;
+  if (!candidate?.item_name && candidate?.good_id == null) {
+    return null;
+  }
+  return {
+    good_id: candidate.good_id,
+    item_name: candidate.item_name,
+    platform: candidate.platform,
+    previous_analysis_summary: candidate.previous_analysis_summary,
+  };
+}
 
 export default CsChatPage;

@@ -702,7 +702,11 @@ class StockTrendAnalyzer:
 
         if result.macd_status in [MACDStatus.GOLDEN_CROSS_ZERO, MACDStatus.GOLDEN_CROSS]:
             reasons.append(f"✅ {result.macd_signal}")
-        elif result.macd_status in [MACDStatus.DEATH_CROSS, MACDStatus.CROSSING_DOWN]:
+        elif result.macd_status in [
+            MACDStatus.DEATH_CROSS,
+            MACDStatus.CROSSING_DOWN,
+            MACDStatus.BEARISH,
+        ]:
             risks.append(f"⚠️ {result.macd_signal}")
         else:
             reasons.append(result.macd_signal)

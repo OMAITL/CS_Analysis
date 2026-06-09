@@ -445,6 +445,36 @@ class CSQAQClient:
         )
         return dict(data or {})
 
+    def get_rank_list(
+        self,
+        *,
+        rank_type: int,
+        day_type: int = 7,
+        page_index: int = 1,
+        page_size: int = 5,
+    ) -> Dict[str, Any]:
+        """
+        POST /api/v1/info/get_rank_list – CSQAQ rank page (涨幅/跌幅榜).
+
+        ``rank_type``: 1 = top gainers (%), 2 = top losers (%).
+        ``day_type``: lookback window in days (7 = 近7天 on csqaq.com/rank).
+        """
+        body: Dict[str, Any] = {
+            "page_index": max(1, int(page_index)),
+            "page_size": max(1, min(50, int(page_size))),
+            "rank_type": int(rank_type),
+            "day_type": int(day_type),
+        }
+        cache_key = f"rank_list:{rank_type}:{day_type}:{page_index}:{page_size}"
+        data = self._request(
+            "POST",
+            "/api/v1/info/get_rank_list",
+            json_body=body,
+            cache_key=cache_key,
+            cache_ttl_seconds=1800,
+        )
+        return dict(data or {})
+
     def get_page_list(
         self,
         *,

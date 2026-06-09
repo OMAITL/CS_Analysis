@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { extractCsItemLabelFromAlertRuleName, formatCsItemAlertTarget } from '../csAlertDisplay';
-import type { AlertRuleItem } from '../types/alerts';
+import type { AlertRuleItem } from '../../types/alerts';
 
 describe('csAlertDisplay', () => {
   it('extracts item name from auto alert titles', () => {

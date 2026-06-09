@@ -8,7 +8,17 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field
 
 
-TargetScopeValue = Literal["single_symbol", "watchlist", "portfolio_holdings", "portfolio_account", "market"]
+TargetScopeValue = Literal[
+    "single_symbol",
+    "watchlist",
+    "portfolio_holdings",
+    "portfolio_account",
+    "market",
+    "cs_holdings",
+    "cs_item",
+]
+# API 入参使用 str，具体合法取值由 AlertService 校验（便于扩展 CS scope，避免 schema 漂移）。
+TargetScopeInput = str
 SeverityValue = Literal["info", "warning", "critical"]
 DryRunStatusValue = Literal["triggered", "not_triggered", "evaluation_error"]
 TargetRecordStatusValue = Literal["triggered", "skipped", "degraded", "failed"]
@@ -16,7 +26,7 @@ TargetRecordStatusValue = Literal["triggered", "skipped", "degraded", "failed"]
 
 class AlertRuleCreateRequest(BaseModel):
     name: Optional[str] = Field(None, max_length=64)
-    target_scope: TargetScopeValue = "single_symbol"
+    target_scope: TargetScopeInput = Field(default="single_symbol", min_length=1, max_length=32)
     target: str = Field(..., min_length=1, max_length=64)
     alert_type: str = Field(..., min_length=1, max_length=32)
     parameters: Dict[str, Any] = Field(default_factory=dict)
@@ -28,7 +38,7 @@ class AlertRuleCreateRequest(BaseModel):
 
 class AlertRuleUpdateRequest(BaseModel):
     name: Optional[str] = Field(None, max_length=64)
-    target_scope: Optional[TargetScopeValue] = None
+    target_scope: Optional[TargetScopeInput] = Field(default=None, min_length=1, max_length=32)
     target: Optional[str] = Field(None, min_length=1, max_length=64)
     alert_type: Optional[str] = Field(None, min_length=1, max_length=32)
     parameters: Optional[Dict[str, Any]] = None

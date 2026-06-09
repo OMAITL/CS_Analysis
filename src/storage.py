@@ -2318,7 +2318,10 @@ class DatabaseManager(metaclass=_DatabaseManagerMeta):
         with self.session_scope() as session:
             normalized_prefix = None
             if session_prefix:
-                normalized_prefix = session_prefix if session_prefix.endswith(":") else f"{session_prefix}:"
+                if session_prefix.endswith(":") or session_prefix.endswith("_"):
+                    normalized_prefix = session_prefix
+                else:
+                    normalized_prefix = f"{session_prefix}:"
             exact_ids = [sid for sid in (extra_session_ids or []) if sid]
 
             # 聚合每个 session 的消息数和最后活跃时间

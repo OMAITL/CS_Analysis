@@ -82,7 +82,7 @@ class AlertRepository:
             conditions.append(AlertRuleRecord.alert_type == alert_type)
         if cs_only:
             conditions.append(AlertRuleRecord.target_scope.in_(CS_ALERT_TARGET_SCOPES))
-        elif target_scope:
+        if target_scope:
             conditions.append(AlertRuleRecord.target_scope == target_scope)
         if target:
             conditions.append(AlertRuleRecord.target == target)

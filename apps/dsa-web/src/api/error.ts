@@ -490,8 +490,14 @@ export function parseApiError(error: unknown): ParsedApiError {
     ? response.config.url
     : '';
   const devProxyBackendDown = status === 500 && (
-    includesAny(matchText, ['internal server error', 'econnrefused', 'connect econnrefused', 'proxy error'])
-    || (!payloadText && includesAny([String(response?.statusText || '')], ['internal server error']))
+    includesAny(matchText, ['econnrefused', 'connect econnrefused', 'proxy error'])
+    || (
+      !payloadText
+      && (
+        includesAny(matchText, ['internal server error'])
+        || includesAny([String(response?.statusText || '')], ['internal server error'])
+      )
+    )
   ) && (requestUrl.includes('/api/') || includesAny(matchText, ['proxy error']))
     && !includesAny(matchText, ['cs item search', 'csqaq', 'get_good_id', 'unauthorized']);
   if (devProxyBackendDown) {

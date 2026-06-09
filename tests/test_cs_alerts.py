@@ -99,3 +99,69 @@ def test_alert_service_accepts_cs_holdings_rule():
     )
     assert fields["target_scope"] == "cs_holdings"
     assert fields["alert_type"] == "cs_stop_loss"
+
+
+def test_alert_service_create_rule_preserves_source():
+    service = AlertService()
+    fields = service._normalize_rule_payload(
+        {
+            "target_scope": "cs_holdings",
+            "target": "all",
+            "alert_type": "cs_stop_loss",
+            "parameters": {"mode": "near"},
+            "source": "cs_auto",
+        },
+        source="cs_auto",
+    )
+    assert fields["source"] == "cs_auto"
+
+
+def test_evaluate_cs_item_price_cross_not_triggered_omits_record_status(monkeypatch):
+    def _snapshot(_client, _good_id):
+        return {"yyyp_sell_price": 658.43}
+
+    monkeypatch.setattr("src.services.cs_alerts.CSQAQClient", lambda: object())
+    monkeypatch.setattr("src.services.cs_alerts.fetch_item_snapshot", _snapshot)
+
+    rule = CSHoldingsAlert(
+        target_scope="cs_item",
+        target="770",
+        alert_type="cs_price_cross",
+        parameters={"direction": "below", "price": 600.0, "platform": "yyyp"},
+        metadata={"persisted_rule_id": 99},
+    )
+    result = evaluate_cs_holdings_alert(rule)
+    assert result["triggered"] is False
+    assert result["status"] == "not_triggered"
+    assert result.get("record_status") is None
+
+
+def test_evaluate_price_cross_falls_back_to_cached_holdings_price(monkeypatch):
+    class _HoldingsWithCache(_FakeHoldingsService):
+        def get_snapshot(self, *, refresh_prices=True, platform=None, **kwargs):
+            return {
+                "items": [
+                    {
+                        "good_id": 770,
+                        "platform": "yyyp",
+                        "market_price": 658.43,
+                        "item_name": "Tec-9",
+                    },
+                ],
+            }
+
+    def _raise_unauthorized(*_args, **_kwargs):
+        raise RuntimeError("401 Client Error: Unauthorized for url: https://api.csqaq.com/api/v1/info/good?id=770")
+
+    monkeypatch.setattr("src.services.cs_alerts.fetch_item_snapshot", _raise_unauthorized)
+    rule = CSHoldingsAlert(
+        target_scope="cs_item",
+        target="770",
+        alert_type="cs_price_cross",
+        parameters={"direction": "below", "price": 700.0, "platform": "yyyp"},
+        metadata={"persisted_rule_id": 99},
+    )
+    result = evaluate_cs_holdings_alert(rule, holdings_service=_HoldingsWithCache())
+    assert result["record_status"] == "degraded"
+    assert result["observed_value"] == 658.43
+    assert "cached price" in result["message"]

@@ -20,6 +20,16 @@ from src.services.cs_skill_prompt import (
 
 logger = logging.getLogger(__name__)
 
+_CS_PLATFORM_LABELS = {
+    "yyyp": "悠悠有品",
+    "buff": "BUFF",
+    "steam": "Steam",
+}
+
+
+def _platform_label(platform: str) -> str:
+    return _CS_PLATFORM_LABELS.get((platform or "").strip().lower(), (platform or "未知").upper())
+
 CS_MARKET_ROLE_ZH = "CS2（Counter-Strike 2）饰品市场"
 CS_MARKET_ROLE_EN = "CS2 (Counter-Strike 2) skin market"
 
@@ -301,11 +311,9 @@ def analysis_result_to_cs_markdown(
         "",
         f"- **market_hash_name**: {ctx.market_hash_name}",
         f"- **good_id**: {ctx.good_id}",
-        f"- **主平台**: {ctx.platform.upper()}",
+        f"- **参考平台**: {_platform_label(ctx.platform)}",
         f"- **综合评分**: {result.sentiment_score}/100 | **建议**: {result.operation_advice} | **趋势**: {result.trend_prediction}",
         f"- **数据质量**: {meta.data_quality} | 生成时间: {now}",
-        "",
-        "> 本报告由 LLM 决策仪表盘 JSON 渲染（与股票分析同一介入点）。",
         "",
         "## 核心结论",
         "",
@@ -314,9 +322,9 @@ def analysis_result_to_cs_markdown(
     ]
     if pos.get("no_position") or pos.get("has_position"):
         if pos.get("no_position"):
-            lines.append(f"- **未持仓**：{pos['no_position']}")
+            lines.append(f"- **尚未持有**：{pos['no_position']}")
         if pos.get("has_position"):
-            lines.append(f"- **已持仓**：{pos['has_position']}")
+            lines.append(f"- **已经持有**：{pos['has_position']}")
         lines.append("")
 
     lines.extend(["## 技术面解读", ""])
@@ -329,7 +337,7 @@ def analysis_result_to_cs_markdown(
     ):
         text = getattr(result, key, None) or ""
         if text:
-            lines.append(f"**{label}**：{text}")
+            lines.append(f"- **{label}**：{text}")
     price_pos = data_p.get("price_position") or {}
     if price_pos:
         lines.append(
@@ -361,8 +369,10 @@ def analysis_result_to_cs_markdown(
     lines.extend(["## 事件与舆论影响", ""])
     if intel.get("sentiment_summary"):
         lines.append(intel["sentiment_summary"])
+        lines.append("")
     if intel.get("latest_news"):
-        lines.append(f"\n{intel['latest_news']}")
+        lines.append(intel["latest_news"])
+        lines.append("")
     for alert in intel.get("risk_alerts") or []:
         lines.append(f"- ⚠️ {alert}")
     for cat in intel.get("positive_catalysts") or []:
@@ -395,6 +405,7 @@ def analysis_result_to_cs_markdown(
     lines.extend(["## 操作建议", ""])
     if battle.get("action_plan"):
         lines.append(battle["action_plan"])
+        lines.append("")
     if sniper:
         for label, key in (
             ("理想买入", "ideal_entry"),
@@ -404,7 +415,8 @@ def analysis_result_to_cs_markdown(
             if sniper.get(key):
                 lines.append(f"- **{label}**：{sniper[key]}")
     if result.buy_reason:
-        lines.append(f"\n**理由**：{result.buy_reason}")
+        lines.append("")
+        lines.append(f"**分析依据**：{result.buy_reason}")
     lines.append("")
 
     return "\n".join(lines)

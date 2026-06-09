@@ -9,6 +9,8 @@
 - 配置入口：`AGENT_EVENT_MONITOR_ENABLED`、`AGENT_EVENT_MONITOR_INTERVAL_MINUTES`、`AGENT_EVENT_ALERT_RULES_JSON`。
 - 运行入口：`main.py` 在 schedule 模式中注册 `agent_event_monitor` 后台任务；后台 worker 每轮读取持久化 active rules，并继续兼容 legacy `AGENT_EVENT_ALERT_RULES_JSON`。
 - 通知投递：触发后复用 `NotificationService.send(..., route_type="alert")`，继续遵守通知网关的 alert 路由配置。
+- **CS 告警邮件（v1）**：同一轮 `AlertWorker` 周期内所有通过冷却检查的规则合并为一封邮件；正文含结构化触发明细，可选 LLM 解读（`CS_ALERT_AI_SUMMARY_ENABLED`）；邮件主题前缀 `CS_ALERT_EMAIL_SUBJECT_PREFIX`（默认 `【CS价格预警】`）。
+- **CS 每日复盘邮件（v1）**：`CS_DAILY_REPORT_ENABLED=true` 后，在 `CS_DAILY_REPORT_TIME`（默认 `20:00`）后随 alert worker 周期发送一封 report 路由邮件；含大盘/持仓/风险摘要，可选 AI 合成（`CS_DAILY_REPORT_AI_ENABLED`）。当日告警明细不在复盘邮件中重复展示，触发告警仍走上方 CS 告警邮件。
 - Web/System 配置校验：`src/services/system_config_service.py` 会对 `AGENT_EVENT_ALERT_RULES_JSON` 做 JSON 与规则语义校验。
 
 当前 runtime 支持三类规则：

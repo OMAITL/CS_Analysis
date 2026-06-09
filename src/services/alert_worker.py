@@ -56,6 +56,15 @@ class TriggerWriteResult:
     created: bool = False
 
 
+@dataclass
+class PendingAlertNotification:
+    runtime_rule: RuntimeAlertRule
+    result: Dict[str, Any]
+    trigger_id: Optional[int]
+    cooldown_decision: DBCooldownDecision
+    is_db_rule: bool
+
+
 class AlertWorker:
     """Evaluate alert-center rules for schedule-mode background polling."""
 
@@ -122,6 +131,7 @@ class AlertWorker:
 
         monitor = EventMonitor()
         daily_cache: Dict[Any, Any] = {}
+        pending_notifications: List[PendingAlertNotification] = []
         for runtime_rule in runtime_rules:
             stats["evaluated"] += 1
             try:
@@ -158,22 +168,28 @@ class AlertWorker:
                         stats["cooldown_suppressed"] += 1
                         stats["notification_attempts"] += 1
                         continue
-                    dispatch = self._send_notification_safely(runtime_rule, result)
-                    stats["notification_attempts"] += self._record_notification_attempts_safely(trigger_id, dispatch)
-                    if self._dispatch_has_real_channel_success(dispatch):
-                        self._upsert_db_cooldown_safely(runtime_rule, result)
-                        if cooldown_decision.fallback_key:
-                            self._mark_notified(
-                                cooldown_decision.fallback_key,
-                                ttl_seconds=cooldown_decision.fallback_ttl_seconds,
-                            )
-                        stats["notified"] += 1
+                    pending_notifications.append(
+                        PendingAlertNotification(
+                            runtime_rule=runtime_rule,
+                            result=result,
+                            trigger_id=trigger_id,
+                            cooldown_decision=cooldown_decision,
+                            is_db_rule=True,
+                        )
+                    )
                 elif self._should_notify(runtime_rule.key):
-                    dispatch = self._send_notification_safely(runtime_rule, result)
-                    stats["notification_attempts"] += self._record_notification_attempts_safely(trigger_id, dispatch)
-                    if bool(dispatch.success):
-                        self._mark_notified(runtime_rule.key)
-                        stats["notified"] += 1
+                    pending_notifications.append(
+                        PendingAlertNotification(
+                            runtime_rule=runtime_rule,
+                            result=result,
+                            trigger_id=trigger_id,
+                            cooldown_decision=DBCooldownDecision(),
+                            is_db_rule=False,
+                        )
+                    )
+
+        if pending_notifications:
+            self._flush_pending_notifications(pending_notifications, stats)
 
         return stats
 
@@ -328,8 +344,14 @@ class AlertWorker:
     @staticmethod
     def _diagnostics_for_status(status: str, result: Dict[str, Any]) -> Optional[str]:
         if status == "triggered":
-            return result.get("diagnostics")
-        return result.get("message") or result.get("reason")
+            diagnostics = result.get("diagnostics")
+            if isinstance(diagnostics, dict):
+                return json.dumps(diagnostics, ensure_ascii=False, sort_keys=True)
+            if diagnostics is None:
+                return None
+            return str(diagnostics)
+        message = result.get("message") or result.get("reason")
+        return str(message) if message is not None else None
 
     def _should_notify(self, rule_key: str, *, ttl_seconds: Optional[int] = None) -> bool:
         now = self.now_provider()
@@ -365,6 +387,76 @@ class AlertWorker:
     @staticmethod
     def _db_cooldown_fallback_key(rule_key: str) -> str:
         return f"db_cooldown:{rule_key}"
+
+    def _flush_pending_notifications(
+        self,
+        pending: List[PendingAlertNotification],
+        stats: Dict[str, int],
+    ) -> None:
+        dispatch = self._send_batched_notification_safely(pending)
+        success = self._dispatch_has_real_channel_success(dispatch)
+        legacy_success = bool(dispatch.success)
+        for item in pending:
+            stats["notification_attempts"] += self._record_notification_attempts_safely(
+                item.trigger_id,
+                dispatch,
+            )
+            if item.is_db_rule:
+                if success:
+                    self._upsert_db_cooldown_safely(item.runtime_rule, item.result)
+                    if item.cooldown_decision.fallback_key:
+                        self._mark_notified(
+                            item.cooldown_decision.fallback_key,
+                            ttl_seconds=item.cooldown_decision.fallback_ttl_seconds,
+                        )
+                    stats["notified"] += 1
+            elif legacy_success:
+                self._mark_notified(item.runtime_rule.key)
+                stats["notified"] += 1
+
+    def _send_batched_notification_safely(
+        self,
+        pending: List[PendingAlertNotification],
+    ) -> "NotificationDispatchResult":
+        try:
+            return self._send_batched_notification(pending)
+        except Exception as exc:
+            from src.notification import ChannelAttemptResult, NotificationDispatchResult
+
+            sanitized = self.service._sanitize_text(str(exc) or "notification failed")
+            logger.warning(
+                "[AlertWorker] Failed to send batched alert notification (%d rules): %s",
+                len(pending),
+                sanitized,
+            )
+            return NotificationDispatchResult(
+                dispatched=False,
+                success=False,
+                status="exception",
+                channel_results=[
+                    ChannelAttemptResult(
+                        channel="__dispatch__",
+                        success=False,
+                        error_code="exception",
+                        retryable=True,
+                        diagnostics=sanitized,
+                    )
+                ],
+                message=sanitized,
+            )
+
+    def _send_batched_notification(
+        self,
+        pending: List[PendingAlertNotification],
+    ) -> "NotificationDispatchResult":
+        from src.services.cs_alert_notification import send_batched_alert_notification
+
+        config = self.config_provider()
+        return send_batched_alert_notification(
+            pending,
+            notifier=self.notifier,
+            config=config,
+        )
 
     def _send_notification(self, runtime_rule: RuntimeAlertRule, result: Dict[str, Any]) -> "NotificationDispatchResult":
         from src.notification import NotificationBuilder, NotificationService

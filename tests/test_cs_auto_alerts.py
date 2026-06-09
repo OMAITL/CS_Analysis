@@ -5,7 +5,12 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from src.services.cs_auto_alerts_service import CSAutoAlertsService, aggregate_holdings_for_price_alerts
+from src.services.cs_auto_alerts_service import (
+    CSAutoAlertsService,
+    _is_orphan_cs_item_price_rule,
+    active_cs_item_lots,
+    aggregate_holdings_for_price_alerts,
+)
 
 
 class _FakeHolding:
@@ -34,8 +39,18 @@ class _FakeAlertRepo:
 
     def list_rules(self, **kwargs):
         source = kwargs.get("source")
-        rows = [row for row in self.rules if not source or row.source == source]
-        return rows, len(rows)
+        cs_only = kwargs.get("cs_only")
+        page = kwargs.get("page", 1)
+        page_size = kwargs.get("page_size", 20)
+        rows = list(self.rules)
+        if source:
+            rows = [row for row in rows if row.source == source]
+        if cs_only:
+            rows = [row for row in rows if row.target_scope in {"cs_holdings", "cs_item"}]
+        total = len(rows)
+        start = (page - 1) * page_size
+        end = start + page_size
+        return rows[start:end], total
 
     def update_rule(self, rule_id, fields):
         for row in self.rules:
@@ -65,6 +80,7 @@ class _FakeAlertService:
             parameters=__import__("json").dumps(payload["parameters"], sort_keys=True),
             severity=payload["severity"],
             source=payload.get("source", "api"),
+            updated_at=None,
         )
         self.repo.rules.append(row)
         return {"id": row.id}
@@ -191,3 +207,109 @@ def test_cs_auto_alerts_deduplicates_same_good_id_with_weighted_average():
     below = next(item for item in params if item["direction"] == "below")
     assert above["price"] == 1800.0
     assert below["price"] == 1350.0
+
+
+class _EmptyHoldingsRepo(_FakeHoldingsRepo):
+    def list_all(self, *, platform=None):
+        return []
+
+
+def test_cleanup_orphan_cs_item_price_rules_deletes_manual_rules_without_holdings():
+    config = SimpleNamespace(cs_holdings_auto_alerts_enabled=False)
+    repo = _FakeAlertRepo()
+    repo.rules.append(
+        SimpleNamespace(
+            id=11,
+            name="手动止盈 · AK-47",
+            target_scope="cs_item",
+            target="100",
+            alert_type="cs_price_cross",
+            parameters='{"direction":"above","price":1200,"platform":"yyyp"}',
+            severity="warning",
+            source="api",
+        )
+    )
+    service = CSAutoAlertsService(
+        holdings_repo=_EmptyHoldingsRepo(),
+        alert_service=_FakeAlertService(repo),
+        alert_repo=repo,
+        config=config,
+    )
+    deleted = service.cleanup_orphan_cs_item_price_rules()
+    assert deleted == 1
+    assert repo.rules == []
+
+
+def test_cleanup_orphan_cs_item_price_rules_keeps_rules_for_existing_lot():
+    config = SimpleNamespace(cs_holdings_auto_alerts_enabled=False)
+    repo = _FakeAlertRepo()
+    repo.rules.append(
+        SimpleNamespace(
+            id=12,
+            name="手动止盈 · AK-47",
+            target_scope="cs_item",
+            target="100",
+            alert_type="cs_price_cross",
+            parameters='{"direction":"above","price":1200,"platform":"yyyp"}',
+            severity="warning",
+            source="api",
+        )
+    )
+    service = CSAutoAlertsService(
+        holdings_repo=_FakeHoldingsRepo(),
+        alert_service=_FakeAlertService(repo),
+        alert_repo=repo,
+        config=config,
+    )
+    deleted = service.cleanup_orphan_cs_item_price_rules()
+    assert deleted == 0
+    assert len(repo.rules) == 1
+
+
+def test_active_cs_item_lots_and_orphan_detection():
+    rows = [
+        _FakeHolding(id=1, good_id=100, platform="yyyp"),
+        _FakeHolding(id=2, good_id=200, platform="buff"),
+    ]
+    lots = active_cs_item_lots(rows)
+    assert lots == {(100, "yyyp"), (200, "buff")}
+
+    rule = SimpleNamespace(
+        target_scope="cs_item",
+        target="100",
+        alert_type="cs_price_cross",
+        parameters='{"direction":"below","price":900,"platform":"buff"}',
+    )
+    assert _is_orphan_cs_item_price_rule(rule, lots, {100, 200}) is True
+
+
+def test_cs_auto_alerts_prunes_legacy_api_source_duplicates():
+    config = SimpleNamespace(
+        cs_holdings_auto_alerts_enabled=True,
+        cs_auto_portfolio_alerts_enabled=True,
+        cs_auto_price_alerts_enabled=False,
+    )
+    repo = _FakeAlertRepo()
+    for idx in range(3):
+        repo.rules.append(
+            SimpleNamespace(
+                id=idx + 1,
+                name="CS 自动止损监控",
+                target_scope="cs_holdings",
+                target="all",
+                alert_type="cs_stop_loss",
+                parameters='{"mode":"near"}',
+                severity="warning",
+                source="api",
+            )
+        )
+    service = CSAutoAlertsService(
+        holdings_repo=_FakeHoldingsRepo(),
+        alert_service=_FakeAlertService(repo),
+        alert_repo=repo,
+        config=config,
+    )
+    stats = service.sync()
+    assert stats["deleted"] >= 2
+    stop_loss_rules = [row for row in repo.rules if row.alert_type == "cs_stop_loss"]
+    assert len(stop_loss_rules) == 1

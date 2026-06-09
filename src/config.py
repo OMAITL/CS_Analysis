@@ -944,6 +944,15 @@ class Config:
     cs_auto_price_alert_take_profit_pct: float = 20.0
     cs_auto_price_alert_stop_loss_pct: float = 10.0
 
+    # === CS alert / daily report notifications ===
+    cs_alert_ai_summary_enabled: bool = True
+    cs_alert_email_subject_prefix: str = "【CS价格预警】"
+    cs_daily_report_enabled: bool = False
+    cs_daily_report_time: str = "20:00"
+    cs_daily_report_ai_enabled: bool = True
+    cs_daily_report_top_items: int = 5
+    cs_daily_report_email_subject_prefix: str = "【CS每日复盘】"
+
     # Discord 机器人状态
     discord_bot_status: str = "A股智能分析 | /help"
 
@@ -1855,6 +1864,21 @@ class Config:
                 10.0,
                 field_name='CS_AUTO_PRICE_ALERT_STOP_LOSS_PCT',
                 minimum=0.0,
+            ),
+            cs_alert_ai_summary_enabled=os.getenv('CS_ALERT_AI_SUMMARY_ENABLED', 'true').lower() == 'true',
+            cs_alert_email_subject_prefix=os.getenv('CS_ALERT_EMAIL_SUBJECT_PREFIX', '【CS价格预警】'),
+            cs_daily_report_enabled=os.getenv('CS_DAILY_REPORT_ENABLED', 'false').lower() == 'true',
+            cs_daily_report_time=os.getenv('CS_DAILY_REPORT_TIME', '20:00'),
+            cs_daily_report_ai_enabled=os.getenv('CS_DAILY_REPORT_AI_ENABLED', 'true').lower() == 'true',
+            cs_daily_report_top_items=parse_env_int(
+                os.getenv('CS_DAILY_REPORT_TOP_ITEMS'),
+                5,
+                field_name='CS_DAILY_REPORT_TOP_ITEMS',
+                minimum=1,
+            ),
+            cs_daily_report_email_subject_prefix=os.getenv(
+                'CS_DAILY_REPORT_EMAIL_SUBJECT_PREFIX',
+                '【CS每日复盘】',
             ),
         )
     

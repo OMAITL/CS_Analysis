@@ -21,6 +21,7 @@ class CSChatResult:
     content: str
     session_id: str
     error: Optional[str] = None
+    linked_item: Optional[Dict[str, Any]] = None
 
 
 def normalize_cs_session_id(session_id: Optional[str]) -> str:
@@ -69,11 +70,28 @@ class CSChatService:
                 progress_callback=progress_callback,
                 context=context,
             )
+            from src.services.cs_chat_session_binding import (
+                binding_from_context,
+                infer_item_name_from_text,
+                resolve_session_binding,
+                save_session_binding,
+            )
+
+            binding = binding_from_context(context)
+            if not binding and result.content:
+                inferred_name = infer_item_name_from_text(result.content)
+                if inferred_name:
+                    binding = {"item_name": inferred_name}
+            if binding:
+                save_session_binding(sid, binding)
+            linked_item = resolve_session_binding(sid)
+
             return CSChatResult(
                 success=result.success,
                 content=result.content or "",
                 session_id=sid,
                 error=result.error,
+                linked_item=linked_item,
             )
         except Exception as exc:
             logger.error("CS chat agent failed: %s", exc, exc_info=True)

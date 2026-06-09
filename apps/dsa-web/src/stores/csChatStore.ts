@@ -10,6 +10,72 @@ import {
 import { generateUUID } from '../utils/uuid';
 
 const STORAGE_KEY_SESSION = 'dsa_cs_chat_session_id';
+const STORAGE_KEY_SESSION_BINDINGS = 'dsa_cs_chat_session_bindings_v1';
+
+export type CsSessionItemBinding = {
+  good_id?: number;
+  item_name?: string;
+  platform?: string;
+  previous_analysis_summary?: string;
+};
+
+function loadSessionItemBindings(): Record<string, CsSessionItemBinding> {
+  if (typeof localStorage === 'undefined') {
+    return {};
+  }
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_SESSION_BINDINGS);
+    if (!raw) {
+      return {};
+    }
+    const parsed = JSON.parse(raw) as Record<string, CsSessionItemBinding>;
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function persistSessionItemBindings(bindings: Record<string, CsSessionItemBinding>): void {
+  if (typeof localStorage === 'undefined') {
+    return;
+  }
+  localStorage.setItem(STORAGE_KEY_SESSION_BINDINGS, JSON.stringify(bindings));
+}
+
+function normalizeLinkedItem(linked: CsSessionItemBinding | null | undefined): CsSessionItemBinding | null {
+  if (!linked?.item_name && linked?.good_id == null) {
+    return null;
+  }
+  return {
+    good_id: linked.good_id,
+    item_name: linked.item_name,
+    platform: linked.platform,
+    previous_analysis_summary: linked.previous_analysis_summary,
+  };
+}
+
+function applyLinkedItemToStore(
+  sessionId: string,
+  linked: CsSessionItemBinding | null | undefined,
+  setBinding: (sessionId: string, binding: CsSessionItemBinding | null) => void,
+): void {
+  const normalized = normalizeLinkedItem(linked);
+  setBinding(sessionId, normalized);
+}
+
+function extractSessionItemBinding(
+  context?: CsChatStreamRequest['context'],
+): CsSessionItemBinding | null {
+  if (!context?.item_name && context?.good_id == null) {
+    return null;
+  }
+  return {
+    good_id: context.good_id,
+    item_name: context.item_name,
+    platform: context.platform,
+    previous_analysis_summary: context.previous_analysis_summary,
+  };
+}
 
 export interface ProgressStep {
   type: string;
@@ -39,6 +105,7 @@ type StreamFailureEvent = {
   content?: string;
   error?: unknown;
   message?: unknown;
+  linked_item?: CsSessionItemBinding;
 };
 
 function getStreamFailureError(event: StreamFailureEvent, fallbackMessage: string): ParsedApiError {
@@ -58,6 +125,7 @@ interface CsChatState {
   completionBadge: boolean;
   hasInitialLoad: boolean;
   abortController: AbortController | null;
+  sessionItemBindings: Record<string, CsSessionItemBinding>;
 }
 
 interface CsChatActions {
@@ -68,6 +136,8 @@ interface CsChatActions {
   switchSession: (targetSessionId: string) => Promise<void>;
   startNewChat: () => void;
   startStream: (payload: CsChatStreamRequest, meta?: StreamMeta) => Promise<void>;
+  setSessionItemBinding: (sessionId: string, binding: CsSessionItemBinding | null) => void;
+  deleteSession: (targetSessionId: string) => Promise<void>;
 }
 
 const getInitialSessionId = (): string => {
@@ -95,10 +165,36 @@ export const useCsChatStore = create<CsChatState & CsChatActions>((set, get) => 
   completionBadge: false,
   hasInitialLoad: false,
   abortController: null,
+  sessionItemBindings: loadSessionItemBindings(),
 
   setCurrentRoute: (path) => set({ currentRoute: path }),
 
   clearCompletionBadge: () => set({ completionBadge: false }),
+
+  setSessionItemBinding: (sessionId, binding) => {
+    const nextBindings = { ...get().sessionItemBindings };
+    if (binding) {
+      nextBindings[sessionId] = binding;
+    } else {
+      delete nextBindings[sessionId];
+    }
+    persistSessionItemBindings(nextBindings);
+    set({ sessionItemBindings: nextBindings });
+  },
+
+  deleteSession: async (targetSessionId) => {
+    await csApi.deleteChatSession(targetSessionId);
+    const nextBindings = { ...get().sessionItemBindings };
+    delete nextBindings[targetSessionId];
+    persistSessionItemBindings(nextBindings);
+    set((state) => ({
+      sessions: state.sessions.filter((session) => session.session_id !== targetSessionId),
+      sessionItemBindings: nextBindings,
+    }));
+    if (get().sessionId === targetSessionId) {
+      get().startNewChat();
+    }
+  },
 
   loadSessions: async () => {
     set({ sessionsLoading: true });
@@ -123,11 +219,12 @@ export const useCsChatStore = create<CsChatState & CsChatActions>((set, get) => 
         const normalized = savedId.startsWith('cs_') ? savedId : `cs_${savedId}`;
         const exists = sessionList.some((s) => s.session_id === normalized);
         if (exists) {
-          const msgs = await csApi.getChatSessionMessages(normalized);
-          if (msgs.length > 0) {
+          const detail = await csApi.getChatSessionMessages(normalized);
+          if (detail.messages.length > 0) {
+            applyLinkedItemToStore(normalized, detail.linkedItem, get().setSessionItemBinding);
             set({
               sessionId: normalized,
-              messages: msgs.map((m) => ({
+              messages: detail.messages.map((m) => ({
                 id: m.id,
                 role: m.role,
                 content: m.content,
@@ -163,10 +260,11 @@ export const useCsChatStore = create<CsChatState & CsChatActions>((set, get) => 
     });
     localStorage.setItem(STORAGE_KEY_SESSION, targetSessionId);
     try {
-      const msgs = await csApi.getChatSessionMessages(targetSessionId);
+      const detail = await csApi.getChatSessionMessages(targetSessionId);
       if (get().sessionId !== targetSessionId) return;
+      applyLinkedItemToStore(targetSessionId, detail.linkedItem, get().setSessionItemBinding);
       set({
-        messages: msgs.map((m) => ({
+        messages: detail.messages.map((m) => ({
           id: m.id,
           role: m.role,
           content: m.content,
@@ -199,6 +297,10 @@ export const useCsChatStore = create<CsChatState & CsChatActions>((set, get) => 
 
     const streamSessionId = payload.session_id || get().sessionId;
     const skillNames = meta?.skillNames?.length ? meta.skillNames : ['通用'];
+    const sessionBinding = extractSessionItemBinding(payload.context);
+    if (sessionBinding) {
+      get().setSessionItemBinding(streamSessionId, sessionBinding);
+    }
 
     const userMessage: CsChatMessage = {
       id: Date.now().toString(),
@@ -243,6 +345,9 @@ export const useCsChatStore = create<CsChatState & CsChatActions>((set, get) => 
             throw getStreamFailureError(event, '大模型调用出错，请检查 API Key 配置');
           }
           finalContent = event.content ?? '';
+          if (event.linked_item) {
+            applyLinkedItemToStore(streamSessionId, event.linked_item, get().setSessionItemBinding);
+          }
           return;
         }
         if (event.type === 'error') {

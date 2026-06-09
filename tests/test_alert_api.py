@@ -529,6 +529,57 @@ class AlertApiTestCase(unittest.TestCase):
         self.assertEqual(invalid_target.status_code, 400, invalid_target.text)
         self.assertEqual(invalid_target.json()["error"], "validation_error")
 
+    def test_create_cs_holdings_rule_via_api(self) -> None:
+        created = self._create_rule({
+            "name": "CS stop loss near",
+            "target_scope": "cs_holdings",
+            "target": "all",
+            "alert_type": "cs_stop_loss",
+            "parameters": {"mode": "near"},
+        })
+        self.assertEqual(created["target_scope"], "cs_holdings")
+        self.assertEqual(created["target"], "all")
+        self.assertEqual(created["alert_type"], "cs_stop_loss")
+        self.assertEqual(created["parameters"], {"mode": "near"})
+
+    def test_list_cs_rules_supports_target_scope_with_cs_only(self) -> None:
+        self._create_rule({
+            "name": "CS item take profit",
+            "target_scope": "cs_item",
+            "target": "769",
+            "alert_type": "cs_price_cross",
+            "parameters": {"direction": "above", "price": 120.0, "platform": "yyyp"},
+        })
+        self._create_rule({
+            "name": "CS portfolio stop loss",
+            "target_scope": "cs_holdings",
+            "target": "all",
+            "alert_type": "cs_stop_loss",
+            "parameters": {"mode": "near"},
+        })
+
+        all_cs = self.client.get("/api/v1/alerts/rules", params={"cs_only": True, "page_size": 100})
+        self.assertEqual(all_cs.status_code, 200, all_cs.text)
+        self.assertGreaterEqual(all_cs.json()["total"], 2)
+
+        holdings_only = self.client.get(
+            "/api/v1/alerts/rules",
+            params={"cs_only": True, "target_scope": "cs_holdings", "page_size": 100},
+        )
+        self.assertEqual(holdings_only.status_code, 200, holdings_only.text)
+        holdings_payload = holdings_only.json()
+        self.assertGreaterEqual(holdings_payload["total"], 1)
+        self.assertTrue(all(item["target_scope"] == "cs_holdings" for item in holdings_payload["items"]))
+
+        item_only = self.client.get(
+            "/api/v1/alerts/rules",
+            params={"cs_only": True, "target_scope": "cs_item", "page_size": 100},
+        )
+        self.assertEqual(item_only.status_code, 200, item_only.text)
+        item_payload = item_only.json()
+        self.assertGreaterEqual(item_payload["total"], 1)
+        self.assertTrue(all(item["target_scope"] == "cs_item" for item in item_payload["items"]))
+
     def test_dry_run_market_light_rule_uses_snapshot_and_does_not_write_history(self) -> None:
         rule = self._create_rule({
             "name": "Market risk-off",

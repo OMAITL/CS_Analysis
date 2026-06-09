@@ -31,9 +31,19 @@ export const IaPlatformArbitrage: React.FC<{ data: CsItemAnalyzeResponse }> = ({
       <h3 className="ia-section-title">平台价格对比</h3>
       <div className="ia-platform-grid">
         {rows.map((row) => (
-          <div key={row.key} className="ia-platform-item">
+          <div
+            key={row.key}
+            className={`ia-platform-item${row.key === low.key ? ' ia-platform-low' : ''}${row.key === high.key ? ' ia-platform-high' : ''}`}
+          >
             <span className="ia-platform-label">{row.label}</span>
-            <span className="ia-platform-price">{row.price?.toFixed(0)}</span>
+            <span className="ia-platform-price">
+              {row.price?.toFixed(0)}
+              <span className="ia-platform-unit">元</span>
+            </span>
+            {row.key === low.key ? <span className="ia-platform-tag ia-platform-tag-low">最低</span> : null}
+            {row.key === high.key && rows.length > 2 ? (
+              <span className="ia-platform-tag ia-platform-tag-high">最高</span>
+            ) : null}
           </div>
         ))}
       </div>

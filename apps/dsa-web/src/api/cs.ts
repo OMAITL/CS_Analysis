@@ -34,6 +34,18 @@ export interface CsChatSessionMessage {
   created_at: string | null;
 }
 
+export interface CsChatLinkedItem {
+  good_id?: number;
+  item_name?: string;
+  platform?: string;
+  previous_analysis_summary?: string;
+}
+
+export interface CsChatSessionDetail {
+  messages: CsChatSessionMessage[];
+  linkedItem: CsChatLinkedItem | null;
+}
+
 export interface CsChatStreamOptions {
   signal?: AbortSignal;
 }
@@ -101,20 +113,38 @@ export const csApi = {
     return response.data.sessions ?? [];
   },
 
-  getChatSessionMessages: async (sessionId: string): Promise<CsChatSessionMessage[]> => {
-    const response = await apiClient.get<{ messages: CsChatSessionMessage[] }>(
+  getChatSessionMessages: async (sessionId: string): Promise<CsChatSessionDetail> => {
+    const response = await apiClient.get<{
+      messages: CsChatSessionMessage[];
+      linked_item?: CsChatLinkedItem | null;
+    }>(
       `/api/v1/cs/chat/sessions/${encodeURIComponent(sessionId)}`,
     );
-    return (response.data.messages ?? []).map((row, index) => ({
-      id: String(row.id ?? index),
-      role: row.role === 'assistant' ? 'assistant' : 'user',
-      content: row.content ?? '',
-      created_at: row.created_at ?? null,
-    }));
+    const linked = response.data.linked_item;
+    return {
+      messages: (response.data.messages ?? []).map((row, index) => ({
+        id: String(row.id ?? index),
+        role: row.role === 'assistant' ? 'assistant' : 'user',
+        content: row.content ?? '',
+        created_at: row.created_at ?? null,
+      })),
+      linkedItem: linked?.item_name || linked?.good_id != null
+        ? {
+            good_id: linked.good_id,
+            item_name: linked.item_name,
+            platform: linked.platform,
+            previous_analysis_summary: linked.previous_analysis_summary,
+          }
+        : null,
+    };
   },
 
   deleteChatSession: async (sessionId: string): Promise<void> => {
     await apiClient.delete(`/api/v1/cs/chat/sessions/${encodeURIComponent(sessionId)}`);
+  },
+
+  clearChatSessionItem: async (sessionId: string): Promise<void> => {
+    await apiClient.delete(`/api/v1/cs/chat/sessions/${encodeURIComponent(sessionId)}/item`);
   },
 
   chatStream: async (

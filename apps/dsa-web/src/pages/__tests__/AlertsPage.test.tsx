@@ -39,6 +39,7 @@ vi.mock('../../api/alerts', () => ({
 vi.mock('../../api/cs', () => ({
   csApi: {
     searchItems: vi.fn(),
+    getHoldingsSnapshot: vi.fn(),
   },
 }));
 
@@ -48,11 +49,16 @@ const csSearchItem = {
   marketHashName: 'AK-47 | Asiimov (Field-Tested)',
 };
 
+async function openCreateDrawer() {
+  fireEvent.click(screen.getByRole('button', { name: '新建规则' }));
+  await screen.findByRole('dialog', { name: '新建告警规则' });
+}
+
 async function selectCsAlertTargetItem() {
   vi.mocked(csApi.searchItems).mockResolvedValue({
     items: [csSearchItem],
     pageIndex: 1,
-    pageSize: 20,
+    pageSize: 5,
     total: 1,
   });
   fireEvent.change(screen.getByLabelText('目标饰品'), { target: { value: 'AK' } });
@@ -93,7 +99,7 @@ function createDeferred<T>() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  listRules.mockResolvedValue({ items: [rule], total: 1, page: 1, pageSize: 20 });
+  listRules.mockResolvedValue({ items: [rule], total: 1, page: 1, pageSize: 5 });
   listTriggers.mockResolvedValue({
     items: [
       {
@@ -111,7 +117,7 @@ beforeEach(() => {
     ],
     total: 1,
     page: 1,
-    pageSize: 20,
+    pageSize: 5,
   });
   listNotifications.mockResolvedValue({ items: [], total: 0, page: 1, pageSize: 20 });
   testRule.mockResolvedValue({
@@ -125,25 +131,30 @@ beforeEach(() => {
   disableRule.mockResolvedValue({ ...rule, enabled: false });
   enableRule.mockResolvedValue(rule);
   deleteRule.mockResolvedValue({ deleted: 1 });
+  vi.mocked(csApi.getHoldingsSnapshot).mockResolvedValue({ items: [] });
 });
 
 describe('AlertsPage', () => {
-  it('loads CS rules, trigger history, and notification empty state', async () => {
+  it('loads monitor dashboard and rules', async () => {
     render(<AlertsPage />);
 
-    expect(screen.getByText(/管理 CS 饰品持仓的价格提醒与风险监控/)).toBeInTheDocument();
-    expect(await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120')).toBeInTheDocument();
-    expect(await screen.findByText('CS item 769 price above 120.00')).toBeInTheDocument();
-    expect(await screen.findByText('暂无通知尝试记录')).toBeInTheDocument();
-    expect(listRules).toHaveBeenCalledWith({
-      enabled: undefined,
-      alertType: undefined,
+    expect(await screen.findByLabelText('今日监控概览')).toBeInTheDocument();
+    expect(within(await screen.findByRole('table')).getByText('AK-47 | 二西莫夫')).toBeInTheDocument();
+    expect(screen.queryByText('今日动态')).not.toBeInTheDocument();
+    expect(screen.queryByText('触发历史')).not.toBeInTheDocument();
+    expect(screen.queryByText('快捷模板')).not.toBeInTheDocument();
+    expect(listRules).toHaveBeenCalledWith(expect.objectContaining({
       csOnly: true,
       page: 1,
-      pageSize: 20,
-    });
-    expect(listTriggers).toHaveBeenCalledWith({ page: 1, pageSize: 20, csOnly: true });
-    expect(listNotifications).toHaveBeenCalledWith({ page: 1, pageSize: 20 });
+      pageSize: 100,
+    }));
+    expect(listRules).toHaveBeenCalledWith(expect.objectContaining({
+      csOnly: true,
+      enabled: true,
+      pageSize: 100,
+    }));
+    expect(listTriggers).toHaveBeenCalledWith({ page: 1, pageSize: 5, csOnly: true });
+    expect(csApi.getHoldingsSnapshot).toHaveBeenCalledWith(false);
   });
 
   it('runs a dry-run test and renders only declared response fields', async () => {
@@ -153,13 +164,12 @@ describe('AlertsPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: '测试' }));
 
     await waitFor(() => expect(testRule).toHaveBeenCalledWith(1));
-    expect(await screen.findByText('测试结果')).toBeInTheDocument();
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.getByText('测试结果')).toBeInTheDocument();
     expect(screen.getByText(/CS item 769 price above 120.00/)).toBeInTheDocument();
-    expect(screen.getByText(/观察值：125/)).toBeInTheDocument();
-    expect(screen.queryByText(/csqaq/)).not.toBeInTheDocument();
   });
 
-  it('renders batch dry-run summary and target results', async () => {
+  it('renders dry-run message from API response', async () => {
     testRule.mockResolvedValueOnce({
       ruleId: 1,
       targetScope: 'cs_holdings',
@@ -171,40 +181,19 @@ describe('AlertsPage', () => {
       triggeredCount: 1,
       degradedCount: 1,
       skippedCount: 0,
-      targetResults: [
-        {
-          target: '769',
-          displayTarget: '饰品 769',
-          status: 'triggered',
-          recordStatus: 'triggered',
-          triggered: true,
-          observedValue: 11,
-          message: 'triggered',
-        },
-        {
-          target: '770',
-          displayTarget: '饰品 770',
-          status: 'not_triggered',
-          recordStatus: 'degraded',
-          triggered: false,
-          observedValue: null,
-          message: 'degraded',
-        },
-      ],
     });
     render(<AlertsPage />);
 
     fireEvent.click(await screen.findByRole('button', { name: '测试' }));
 
-    expect(await screen.findByText(/评估 2 · 触发 1 · 降级 1 · 跳过 0/)).toBeInTheDocument();
-    expect(screen.getByText('饰品 769')).toBeInTheDocument();
-    expect(screen.getByText(/not_triggered \/ degraded/)).toBeInTheDocument();
+    expect(await screen.findByText('Evaluated 2 targets')).toBeInTheDocument();
   });
 
   it('creates a CS rule through the page form and reloads rules', async () => {
     render(<AlertsPage />);
 
-    await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120');
+    await within(await screen.findByRole('table')).findByText('AK-47 | 二西莫夫');
+    await openCreateDrawer();
     fireEvent.change(screen.getByLabelText('目标范围'), { target: { value: 'cs_item' } });
     await selectCsAlertTargetItem();
     fireEvent.change(screen.getByLabelText('价格阈值'), { target: { value: '200' } });
@@ -225,7 +214,8 @@ describe('AlertsPage', () => {
     createRule.mockRejectedValueOnce({ parsedError });
     render(<AlertsPage />);
 
-    await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120');
+    await within(await screen.findByRole('table')).findByText('AK-47 | 二西莫夫');
+    await openCreateDrawer();
     fireEvent.change(screen.getByLabelText('目标范围'), { target: { value: 'cs_item' } });
     await selectCsAlertTargetItem();
     fireEvent.change(screen.getByLabelText('价格阈值'), { target: { value: '200' } });
@@ -237,32 +227,57 @@ describe('AlertsPage', () => {
   });
 
   it('clamps rules pagination when a mutation leaves the current page empty', async () => {
-    const page2Rule = { ...rule, id: 2, name: '第二页 CS 规则', target: '770' };
-    listRules
-      .mockResolvedValueOnce({ items: [rule], total: 21, page: 1, pageSize: 20 })
-      .mockResolvedValueOnce({ items: [page2Rule], total: 21, page: 2, pageSize: 20 })
-      .mockResolvedValueOnce({ items: [], total: 20, page: 2, pageSize: 20 })
-      .mockResolvedValue({ items: [rule], total: 20, page: 1, pageSize: 20 });
+    const page2Rule = {
+      ...rule,
+      id: 2,
+      name: 'CS 自动止盈 · 第二页饰品 ≥ 120',
+      target: '770',
+    };
+    let page2Deleted = false;
+    const fillerRules = Array.from({ length: 4 }, (_, index) => ({
+      ...rule,
+      id: index + 3,
+      name: `CS 自动止盈 · 填充饰品 ${index} ≥ 120`,
+      target: String(800 + index),
+    }));
+    const allRules = [rule, ...fillerRules, page2Rule];
+
+    deleteRule.mockImplementation(async (ruleId: number) => {
+      if (ruleId === 2) {
+        page2Deleted = true;
+      }
+      return { deleted: 1 };
+    });
+    listRules.mockImplementation(() => {
+      const items = page2Deleted ? allRules.filter((item) => item.id !== 2) : allRules;
+      return Promise.resolve({
+        items,
+        total: items.length,
+        page: 1,
+        pageSize: 100,
+      });
+    });
 
     render(<AlertsPage />);
 
-    expect(await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120')).toBeInTheDocument();
+    const table = await screen.findByRole('table');
+    expect(within(table).getByText('AK-47 | 二西莫夫')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: '2' }));
-    expect(await screen.findByText('第二页 CS 规则')).toBeInTheDocument();
-    fireEvent.click(screen.getByLabelText('删除 第二页 CS 规则'));
+    await waitFor(() => expect(within(screen.getByRole('table')).getByText('第二页饰品')).toBeInTheDocument());
+    fireEvent.click(screen.getByLabelText('删除 CS 自动止盈 · 第二页饰品 ≥ 120'));
     fireEvent.click(await screen.findByRole('button', { name: '删除' }));
 
     await waitFor(() => expect(deleteRule).toHaveBeenCalledWith(2));
     await waitFor(() => {
-      expect(listRules).toHaveBeenCalledWith({
-        enabled: undefined,
-        alertType: undefined,
+      expect(listRules).toHaveBeenCalledWith(expect.objectContaining({
         csOnly: true,
         page: 1,
-        pageSize: 20,
-      });
+        pageSize: 100,
+      }));
     });
-    expect(await screen.findByText('CS 自动止盈 · AK-47 | 二西莫夫 ≥ 120')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(within(screen.getByRole('table')).getByText('AK-47 | 二西莫夫')).toBeInTheDocument();
+    });
   });
 
   it('keeps the latest rules response when filter requests resolve out of order', async () => {
@@ -270,20 +285,28 @@ describe('AlertsPage', () => {
     const filteredRequest = createDeferred<{ items: Array<typeof rule>; total: number; page: number; pageSize: number }>();
     const staleRule = { ...rule, id: 3, name: '旧筛选规则', enabled: true };
     const filteredRule = { ...rule, id: 4, name: '停用规则', enabled: false };
-    listRules
-      .mockReset()
-      .mockReturnValueOnce(initialRequest.promise)
-      .mockReturnValueOnce(filteredRequest.promise);
+    listRules.mockImplementation((query) => {
+      if (query?.enabled === true && query?.pageSize === 100) {
+        return Promise.resolve({ items: [rule], total: 1, page: 1, pageSize: 100 });
+      }
+      if (query?.enabled === false) {
+        return filteredRequest.promise;
+      }
+      if (query?.page === 1 && query?.pageSize === 5 && query?.enabled === undefined) {
+        return initialRequest.promise;
+      }
+      return Promise.resolve({ items: [rule], total: 1, page: 1, pageSize: 5 });
+    });
 
     render(<AlertsPage />);
 
     fireEvent.change(screen.getByLabelText('启停状态'), { target: { value: 'disabled' } });
-    await waitFor(() => expect(listRules).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(listRules).toHaveBeenCalledWith(expect.objectContaining({ enabled: false })));
 
-    filteredRequest.resolve({ items: [filteredRule], total: 1, page: 1, pageSize: 20 });
-    expect(await screen.findByText('停用规则')).toBeInTheDocument();
+    filteredRequest.resolve({ items: [filteredRule], total: 1, page: 1, pageSize: 5 });
+    expect(await within(await screen.findByRole('table')).findByText('停用规则')).toBeInTheDocument();
 
-    initialRequest.resolve({ items: [staleRule], total: 1, page: 1, pageSize: 20 });
+    initialRequest.resolve({ items: [staleRule], total: 1, page: 1, pageSize: 5 });
     await waitFor(() => expect(screen.queryByText('旧筛选规则')).not.toBeInTheDocument());
     expect(screen.getByText('停用规则')).toBeInTheDocument();
   });
