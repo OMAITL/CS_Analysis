@@ -11,14 +11,6 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
-from src.agent.events import (
-    EventMonitor,
-    PriceAlert,
-    PriceChangeAlert,
-    VolumeAlert,
-    parse_event_alert_rules,
-    validate_event_alert_rule,
-)
 from src.services.alert_service import AlertService
 
 logger = logging.getLogger(__name__)
@@ -129,13 +121,11 @@ class AlertWorker:
             logger.info("[AlertWorker] No active alert rules loaded")
             return stats
 
-        monitor = EventMonitor()
-        daily_cache: Dict[Any, Any] = {}
         pending_notifications: List[PendingAlertNotification] = []
         for runtime_rule in runtime_rules:
             stats["evaluated"] += 1
             try:
-                result = asyncio.run(self.service._evaluate_rule(runtime_rule.rule, monitor, daily_cache=daily_cache))
+                result = asyncio.run(self.service._evaluate_rule(runtime_rule.rule))
             except Exception as exc:
                 result = {
                     "rule_id": self.service._runtime_rule_id(runtime_rule.rule),
@@ -224,63 +214,7 @@ class AlertWorker:
             except Exception as exc:
                 logger.warning("[AlertWorker] Skip invalid persisted alert rule %s: %s", getattr(row, "id", "?"), exc)
 
-        for key, rule in self._load_legacy_rules(config):
-            if key in seen_keys:
-                logger.info("[AlertWorker] Skip duplicate legacy alert rule: %s", key)
-                continue
-            runtime_rules.append(RuntimeAlertRule(key=key, rule=rule, source="legacy_env"))
-            seen_keys.add(key)
-
         return runtime_rules
-
-    def _load_legacy_rules(self, config: Any) -> List[Tuple[str, Any]]:
-        raw_rules = getattr(config, "agent_event_alert_rules_json", "")
-        try:
-            parsed_rules = parse_event_alert_rules(raw_rules)
-        except Exception as exc:
-            logger.warning("[AlertWorker] Failed to parse legacy alert rules: %s", exc)
-            return []
-
-        legacy_rules: List[Tuple[str, Any]] = []
-        for index, entry in enumerate(parsed_rules, start=1):
-            try:
-                validate_event_alert_rule(entry)
-                stock_code = str(entry.get("stock_code") or "").strip()
-                alert_type = str(entry.get("alert_type") or "").strip().lower()
-                parameters = self.service._normalize_parameters(alert_type, entry)
-                key = self._semantic_key("single_symbol", stock_code, alert_type, parameters)
-                metadata = {"source": "legacy_env", "legacy_rule_index": index}
-                if alert_type == "price_cross":
-                    rule = PriceAlert(
-                        stock_code=stock_code,
-                        direction=str(parameters["direction"]),
-                        price=float(parameters["price"]),
-                        metadata=metadata,
-                    )
-                elif alert_type == "price_change_percent":
-                    rule = PriceChangeAlert(
-                        stock_code=stock_code,
-                        direction=str(parameters["direction"]),
-                        change_pct=float(parameters["change_pct"]),
-                        metadata=metadata,
-                    )
-                elif alert_type == "volume_spike":
-                    rule = VolumeAlert(
-                        stock_code=stock_code,
-                        multiplier=float(parameters["multiplier"]),
-                        metadata=metadata,
-                    )
-                else:
-                    raise ValueError(f"unsupported alert_type: {alert_type}")
-                legacy_rules.append((key, rule))
-            except Exception as exc:
-                logger.warning("[AlertWorker] Skip invalid legacy alert rule #%d: %s", index, exc)
-        return legacy_rules
-
-    @staticmethod
-    def _semantic_key(target_scope: str, target: str, alert_type: str, parameters: Dict[str, Any]) -> str:
-        canonical_params = json.dumps(parameters or {}, ensure_ascii=False, sort_keys=True)
-        return f"{target_scope}:{target}:{alert_type}:{canonical_params}"
 
     def _record_trigger(self, runtime_rule: RuntimeAlertRule, result: Dict[str, Any], status: str) -> TriggerWriteResult:
         try:

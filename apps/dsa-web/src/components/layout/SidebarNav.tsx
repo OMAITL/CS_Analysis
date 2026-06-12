@@ -3,7 +3,6 @@ import { motion } from 'motion/react';
 import { BarChart3, LogOut } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAgentChatStore } from '../../stores/agentChatStore';
 import { useCsChatStore } from '../../stores/csChatStore';
 import { cn } from '../../utils/cn';
 import { ConfirmDialog } from '../common/ConfirmDialog';
@@ -20,9 +19,7 @@ const NAV_ITEMS = APP_NAV_ITEMS;
 
 export const SidebarNav: React.FC<SidebarNavProps> = ({ collapsed = false, onNavigate }) => {
   const { authEnabled, logout } = useAuth();
-  const csCompletionBadge = useCsChatStore((state) => state.completionBadge);
-  const agentCompletionBadge = useAgentChatStore((state) => state.completionBadge);
-  const completionBadge = csCompletionBadge || agentCompletionBadge;
+  const completionBadge = useCsChatStore((state) => state.completionBadge);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   return (

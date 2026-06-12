@@ -1240,6 +1240,57 @@
   margin-top: 0.2rem;
 }
 
+.ia-preset-card-skill {
+  display: block;
+  font-size: 0.625rem;
+  color: hsl(var(--primary) / 0.85);
+  margin-top: 0.35rem;
+}
+
+.ia-task-field-span {
+  grid-column: 1 / -1;
+}
+
+.ia-skill-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.ia-skill-hint {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--ia-muted);
+}
+
+.ia-skill-hint-top {
+  margin-bottom: 0.25rem;
+}
+
+.ia-skill-active-summary {
+  margin: 0 0 0.35rem;
+  font-size: 0.75rem;
+  color: hsl(var(--secondary-text));
+}
+
+.ia-skill-group + .ia-skill-group {
+  margin-top: 0.65rem;
+}
+
+.ia-skill-group-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: hsl(var(--secondary-text));
+}
+
+.ia-skill-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
 .ia-loader-pulse {
   display: inline-flex;
   gap: 0.2rem;

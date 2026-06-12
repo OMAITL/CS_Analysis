@@ -3,7 +3,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   Camera,
+  Check,
   Package,
+  Pencil,
   Plus,
   RefreshCw,
   Trash2,
@@ -11,6 +13,7 @@ import {
   TrendingUp,
   Upload,
   Wallet,
+  X,
 } from 'lucide-react';
 import { csApi } from '../api/cs';
 import {
@@ -147,6 +150,9 @@ const CsHoldingsPage: React.FC = () => {
   const [skipDuplicates, setSkipDuplicates] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [rematching, setRematching] = useState(false);
+  const [editingPurchaseId, setEditingPurchaseId] = useState<number | null>(null);
+  const [editingPurchaseValue, setEditingPurchaseValue] = useState('');
+  const [updatingPurchaseId, setUpdatingPurchaseId] = useState<number | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const rematchTimerRef = useRef<number | null>(null);
 
@@ -196,6 +202,41 @@ const CsHoldingsPage: React.FC = () => {
       await loadSnapshot(true);
     } catch (err) {
       setError(getParsedApiError(err));
+    }
+  };
+
+  const startEditPurchase = (row: HoldingRow) => {
+    setEditingPurchaseId(row.id);
+    setEditingPurchaseValue(row.purchasePrice != null ? String(row.purchasePrice) : '');
+    setError(null);
+  };
+
+  const cancelEditPurchase = () => {
+    setEditingPurchaseId(null);
+    setEditingPurchaseValue('');
+  };
+
+  const handleSavePurchase = async (id: number) => {
+    const price = Number.parseFloat(editingPurchaseValue);
+    if (!Number.isFinite(price) || price < 0) {
+      setError({
+        title: '输入无效',
+        message: '请输入有效的购入价（≥ 0）',
+        rawMessage: 'invalid purchase price',
+        category: 'unknown',
+      });
+      return;
+    }
+    setUpdatingPurchaseId(id);
+    setError(null);
+    try {
+      await csApi.updateHolding(id, { purchase_price: price });
+      cancelEditPurchase();
+      await loadSnapshot(true);
+    } catch (err) {
+      setError(getParsedApiError(err));
+    } finally {
+      setUpdatingPurchaseId(null);
     }
   };
 
@@ -657,7 +698,66 @@ const CsHoldingsPage: React.FC = () => {
                       </div>
                     </td>
                     <td className="py-3 pr-3 text-right tabular-nums">{formatMoney(row.marketPrice)}</td>
-                    <td className="py-3 pr-3 text-right tabular-nums">{formatMoney(row.purchasePrice)}</td>
+                    <td className="py-3 pr-3 text-right tabular-nums">
+                      {editingPurchaseId === row.id ? (
+                        <div className="flex items-center justify-end gap-1">
+                          <input
+                            className={cn(FIELD_CLASS, 'h-9 w-28 px-2 text-right')}
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={editingPurchaseValue}
+                            autoFocus
+                            disabled={updatingPurchaseId === row.id}
+                            onChange={(e) => setEditingPurchaseValue(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                void handleSavePurchase(row.id);
+                              }
+                              if (e.key === 'Escape') {
+                                e.preventDefault();
+                                cancelEditPurchase();
+                              }
+                            }}
+                            aria-label={`编辑 ${row.itemName} 购入价`}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label="保存购入价"
+                            isLoading={updatingPurchaseId === row.id}
+                            onClick={() => void handleSavePurchase(row.id)}
+                          >
+                            <Check className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label="取消编辑"
+                            disabled={updatingPurchaseId === row.id}
+                            onClick={cancelEditPurchase}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="inline-flex items-center justify-end gap-1">
+                          <span>{formatMoney(row.purchasePrice)}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            aria-label={`编辑 ${row.itemName} 购入价`}
+                            onClick={() => startEditPurchase(row)}
+                          >
+                            <Pencil className="h-3.5 w-3.5 text-secondary-text" />
+                          </Button>
+                        </div>
+                      )}
+                    </td>
                     <td
                       className={cn(
                         'py-3 pr-3 text-right tabular-nums',

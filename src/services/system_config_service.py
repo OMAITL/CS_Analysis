@@ -1679,23 +1679,16 @@ class SystemConfigService:
                 )
             else:
                 if key == "AGENT_EVENT_ALERT_RULES_JSON":
-                    try:
-                        from src.agent.events import parse_event_alert_rules, validate_event_alert_rule
-
-                        rule_index = 0
-                        for rule_index, rule in enumerate(parse_event_alert_rules(parsed), start=1):
-                            validate_event_alert_rule(rule)
-                    except ValueError as exc:
-                        issues.append(
-                            {
-                                "key": key,
-                                "code": "invalid_event_rule",
-                                "message": f"Rule validation failed: {exc}",
-                                "severity": "error",
-                                "expected": "supported EventMonitor rule fields and enum values",
-                                "actual": f"rule #{rule_index or 1}",
-                            }
-                        )
+                    issues.append(
+                        {
+                            "key": key,
+                            "code": "deprecated_stock_alert_rules",
+                            "message": "Legacy stock alert rules are no longer supported; use CS alert rules in Web UI instead.",
+                            "severity": "warning",
+                            "expected": "empty or removed",
+                            "actual": "non-empty legacy JSON",
+                        }
+                    )
 
         elif validation.get("pattern"):
             pattern = validation["pattern"]

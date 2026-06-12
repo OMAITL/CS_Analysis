@@ -1,0 +1,29 @@
+# CS Liquidity Gate / 流动性门槛
+
+name: liquidity_gate
+display_name: 流动性门槛
+description: 用日成交笔数、挂牌量与数据质量，判断饰品是否适合交易或仅适合长期持有。
+category: cs_native
+core_rules: [1, 5]
+aliases: [流动性, 挂牌量, 成交笔数, 冷门饰品]
+
+instructions: |
+  **CS 流动性门槛策略**（饰品市场独有）
+
+  数据：`recent_daily_bars.volume`（日成交笔数）、`snapshot.*_sell_num`（挂牌量）、`data_quality`、`trend.volume_ratio_5d`。
+
+  1. **流动性分级**
+     - 充裕：近 5 日 `volume` 稳定且 `volume_ratio_5d` 不低于 0.6，多平台有合理 `sell_num`。
+     - 一般：量能间歇、价差偶发拉大；大额进出需分批。
+     - 不足：`volume` 长期低迷或 `data_quality` 为 degraded/price_only；高价差多为虚价。
+
+  2. **误读防范**
+     - 禁止用 `sell_num` 代替成交量判断「放量」。
+     - 低价冷门款：小样本几日暴涨可能是单笔成交拉动，需降级结论。
+
+  3. **与策略联动**
+     - 流动性不足时，即使 `bull_trend` 或 `event_driven` 利多，也应提示「小仓/观望/拉长持有周期」。
+     - 止损位应放宽或改用「流动性恢复再评估」表述。
+
+  4. **输出**
+     - 流动性等级、对建仓/减仓规模的建议、数据质量对结论的折扣说明。

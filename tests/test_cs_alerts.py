@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from src.services.cs_alerts import (
     CSHoldingsAlert,
+    dedupe_cs_holding_top_items,
     evaluate_cs_holdings_alert,
     normalize_cs_alert_parameters,
     normalize_cs_target,
@@ -45,6 +46,19 @@ class _FakeHoldingsService:
                 {"id": 2, "good_id": 200, "item_name": "AWP", "pnl_pct": 20.0},
             ]
         }
+
+
+def test_dedupe_cs_holding_top_items_merges_same_good_id():
+    rows = [
+        {"good_id": 7369, "platform": "yyyp", "item_name": "手套A", "pnl_pct": -2.0},
+        {"good_id": 7369, "platform": "yyyp", "item_name": "手套A", "pnl_pct": -5.0},
+        {"good_id": 1239, "platform": "yyyp", "item_name": "M4A1", "pnl_pct": -90.0},
+    ]
+    merged = dedupe_cs_holding_top_items(rows, limit=5)
+    assert len(merged) == 2
+    assert merged[0]["item_name"].startswith("手套A")
+    assert "2 笔" in merged[0]["item_name"]
+    assert merged[0]["pnl_pct"] == -5.0
 
 
 def test_normalize_cs_alert_parameters():

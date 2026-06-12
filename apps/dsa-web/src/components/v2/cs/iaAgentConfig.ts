@@ -80,32 +80,50 @@ export const AGENT_DATA_SOURCES = [
   { id: 'search', label: '事件搜索', hint: 'HLTV / 贴吧' },
 ] as const;
 
-export const AGENT_PRESET_TASKS = [
+export type AgentPresetTask = {
+  id: string;
+  title: string;
+  query: string;
+  focus: string;
+  /** Auto-pick analysis skill so users do not need to choose manually. */
+  skillId?: string;
+  skillHint?: string;
+};
+
+export const AGENT_PRESET_TASKS: AgentPresetTask[] = [
   {
     id: 'butterfly',
     title: '蝴蝶刀 北方森林',
     query: '蝴蝶刀 北方森林',
     focus: '低价位刀类 · 流动性观察',
+    skillId: 'liquidity_gate',
+    skillHint: '流动性门槛',
   },
   {
     id: 'fireserpent',
     title: 'AK-47 火蛇',
     query: 'AK-47 火蛇',
     focus: '经典步枪 · 长线趋势',
+    skillId: 'bull_trend',
+    skillHint: '多头趋势',
   },
   {
     id: 'doppler',
     title: '爪子刀 多普勒',
     query: '爪子刀 多普勒',
     focus: '高波动 · 套利空间',
+    skillId: 'platform_arbitrage',
+    skillHint: '跨平台价差',
   },
   {
     id: 'dragon',
     title: 'M4A4 龙王',
     query: 'M4A4 龙王',
     focus: '事件驱动 · 箱价联动',
+    skillId: 'event_driven',
+    skillHint: '事件驱动',
   },
-] as const;
+];
 
 export const AGENT_TOOL_FALLBACK = {
   id: 'tools',

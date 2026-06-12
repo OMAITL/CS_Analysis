@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import { BarChart3, LogOut, Menu } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
-import { useAgentChatStore } from '../../stores/agentChatStore';
+import { useCsChatStore } from '../../stores/csChatStore';
 import { cn } from '../../utils/cn';
 import { ConfirmDialog } from '../common/ConfirmDialog';
 import { StatusDot } from '../common/StatusDot';
@@ -16,7 +16,7 @@ type TopNavProps = {
 
 export const TopNav: React.FC<TopNavProps> = ({ onOpenMobileMenu }) => {
   const { authEnabled, logout } = useAuth();
-  const completionBadge = useAgentChatStore((state) => state.completionBadge);
+  const completionBadge = useCsChatStore((state) => state.completionBadge);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   return (

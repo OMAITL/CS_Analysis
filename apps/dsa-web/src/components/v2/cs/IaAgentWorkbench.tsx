@@ -18,10 +18,12 @@ type IaAgentWorkbenchProps = {
   selectedSkillId: string;
   onSelectedSkillIdChange: (value: string) => void;
   csSkills: CsSkillInfo[];
+  recommendedSkillIds?: string[];
+  categoryLabels?: Record<string, string>;
   isAnalyzing: boolean;
   inputError?: boolean;
   onSubmit: () => void;
-  onPickTask: (query: string) => void;
+  onPickTask: (query: string, skillId?: string) => void;
   onReanalyze: () => void;
   result: CsItemAnalyzeResponse | null;
   historyItems: CsHomeHistoryItem[];
@@ -40,6 +42,8 @@ export const IaAgentWorkbench: React.FC<IaAgentWorkbenchProps> = ({
   selectedSkillId,
   onSelectedSkillIdChange,
   csSkills,
+  recommendedSkillIds,
+  categoryLabels,
   isAnalyzing,
   inputError,
   onSubmit,
@@ -63,6 +67,8 @@ export const IaAgentWorkbench: React.FC<IaAgentWorkbenchProps> = ({
         selectedSkillId={selectedSkillId}
         onSelectedSkillIdChange={onSelectedSkillIdChange}
         csSkills={csSkills}
+        recommendedSkillIds={recommendedSkillIds}
+        categoryLabels={categoryLabels}
         isAnalyzing={isAnalyzing}
         inputError={inputError}
         onSubmit={onSubmit}

@@ -1,6 +1,5 @@
 import type React from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { portfolioApi } from '../../api/portfolio';
 import type {
   AlertRuleCreateRequest,
   AlertSeverity,
@@ -10,9 +9,7 @@ import type {
   MarketRegion,
   PortfolioStopLossMode,
 } from '../../types/alerts';
-import type { PortfolioAccountItem } from '../../types/portfolio';
 import type { CsGoodIdItem } from '../../types/cs';
-import { validateStockCode } from '../../utils/validation';
 import { CsItemSearchInput } from '../cs/CsItemSearchInput';
 import { Button, Card, Checkbox, Input, Select } from '../common';
 
@@ -179,7 +176,7 @@ function optionsForScope(scope: AlertTargetScope) {
 export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
   onSubmit,
   isSubmitting = false,
-  csOnly = false,
+  csOnly = true,
   embedded = false,
   preset = null,
 }) => {
@@ -195,7 +192,6 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
   const [csPnlDirection, setCsPnlDirection] = useState<'loss' | 'gain'>(defaults.csPnlDirection);
   const [csPnlThresholdPct, setCsPnlThresholdPct] = useState(defaults.csPnlThresholdPct);
   const [marketRegion, setMarketRegion] = useState<MarketRegion>('cn');
-  const [accounts, setAccounts] = useState<PortfolioAccountItem[]>([]);
   const [accountsError, setAccountsError] = useState<string | null>(null);
   const [alertType, setAlertType] = useState<AlertType>(defaults.alertType);
   const [severity, setSeverity] = useState<AlertSeverity>(defaults.severity);
@@ -221,33 +217,16 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
   const [formError, setFormError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (csOnly || !isPortfolioScope(targetScope)) return undefined;
-    let cancelled = false;
-    void portfolioApi.getAccounts(false)
-      .then((response) => {
-        if (cancelled) return;
-        setAccounts(response.accounts ?? []);
-        setAccountsError(null);
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setAccounts([]);
-        setAccountsError(error instanceof Error ? error.message : '账户加载失败');
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [csOnly, targetScope]);
+    if (!isPortfolioScope(targetScope)) {
+      setAccountsError(null);
+    }
+  }, [targetScope]);
 
   const alertTypeOptions = useMemo(() => optionsForScope(targetScope), [targetScope]);
   const targetScopeOptions = useMemo(() => scopeOptionsForMode(csOnly), [csOnly]);
   const portfolioTargetOptions = useMemo(() => [
     { value: 'all', label: '全部账户' },
-    ...accounts.map((account) => ({
-      value: String(account.id),
-      label: `${account.name} #${account.id}`,
-    })),
-  ], [accounts]);
+  ], []);
 
   const resetParameters = (nextType: AlertType) => {
     if (nextType === 'price_cross') {
@@ -461,12 +440,8 @@ export const AlertRuleForm: React.FC<AlertRuleFormProps> = ({
     event.preventDefault();
     let resolvedTarget = target.trim();
     if (targetScope === 'single_symbol') {
-      const targetValidation = validateStockCode(target);
-      if (!targetValidation.valid) {
-        setFormError(targetValidation.message ?? '股票代码格式不正确');
-        return;
-      }
-      resolvedTarget = targetValidation.normalized;
+      setFormError('股票告警已移除，请使用 CS 饰品告警');
+      return;
     } else if (targetScope === 'watchlist') {
       resolvedTarget = 'default';
     } else if (targetScope === 'market') {

@@ -93,9 +93,19 @@ export const csApi = {
     return normalizeCsAnalyzeResponse(toCamelCase<CsItemAnalyzeResponse>(response.data));
   },
 
-  listSkills: async (): Promise<{ skills: CsSkillInfo[]; default: string[] }> => {
+  listSkills: async (): Promise<{
+    skills: CsSkillInfo[];
+    default: string[];
+    recommended: string[];
+    categoryLabels: Record<string, string>;
+  }> => {
     const response = await apiClient.get<Record<string, unknown>>('/api/v1/cs/items/skills');
-    const data = toCamelCase<{ skills: Array<Record<string, string>>; default: string[] }>(response.data);
+    const data = toCamelCase<{
+      skills: Array<Record<string, string>>;
+      default: string[];
+      recommended?: string[];
+      categoryLabels?: Record<string, string>;
+    }>(response.data);
     const skills: CsSkillInfo[] = (data.skills ?? []).map((row) => ({
       id: row.id ?? '',
       displayName: row.displayName ?? row.id ?? '',
@@ -103,7 +113,12 @@ export const csApi = {
       category: row.category ?? '',
       source: row.source ?? '',
     }));
-    return { skills, default: data.default ?? [] };
+    return {
+      skills,
+      default: data.default ?? [],
+      recommended: data.recommended ?? [],
+      categoryLabels: data.categoryLabels ?? {},
+    };
   },
 
   getChatSessions: async (limit = 50): Promise<CsChatSessionItem[]> => {

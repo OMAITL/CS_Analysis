@@ -3,6 +3,8 @@ import { Play, RefreshCw, Settings2 } from 'lucide-react';
 import { CsItemSearchInput } from '../../cs/CsItemSearchInput';
 import type { CsGoodIdItem } from '../../../types/cs';
 import type { CsSkillInfo } from '../../../types/csHome';
+import { resolveSkillDisplayName } from '../../../utils/csSkillUi';
+import { CsSkillSelector } from './CsSkillSelector';
 import { AGENT_PRESET_TASKS } from './iaAgentConfig';
 
 type IaTaskSidebarProps = {
@@ -17,10 +19,12 @@ type IaTaskSidebarProps = {
   selectedSkillId: string;
   onSelectedSkillIdChange: (value: string) => void;
   csSkills: CsSkillInfo[];
+  recommendedSkillIds?: string[];
+  categoryLabels?: Record<string, string>;
   isAnalyzing: boolean;
   inputError?: boolean;
   onSubmit: () => void;
-  onPickTask: (query: string) => void;
+  onPickTask: (query: string, skillId?: string) => void;
 };
 
 export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
@@ -35,16 +39,14 @@ export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
   selectedSkillId,
   onSelectedSkillIdChange,
   csSkills,
+  recommendedSkillIds,
+  categoryLabels,
   isAnalyzing,
   inputError,
   onSubmit,
   onPickTask,
 }) => {
-  const strategyOptions = [
-    { id: '', name: '默认策略' },
-    ...csSkills.map((skill) => ({ id: skill.id, name: skill.displayName })),
-  ];
-  const activeStrategy = strategyOptions.find((opt) => opt.id === selectedSkillId) ?? strategyOptions[0];
+  const activeStrategyName = resolveSkillDisplayName(csSkills, selectedSkillId);
 
   return (
     <aside className="ia-task-sidebar">
@@ -85,20 +87,17 @@ export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
               <option value="steam">Steam</option>
             </select>
           </label>
-          <label className="ia-task-field">
-            <span>决策 Skill</span>
-            <select
-              className="ia-select w-full"
+          <label className="ia-task-field ia-task-field-span">
+            <span>分析视角（可选）</span>
+            <CsSkillSelector
+              variant="select"
+              skills={csSkills}
+              recommendedIds={recommendedSkillIds}
+              categoryLabels={categoryLabels}
               value={selectedSkillId}
-              onChange={(e) => onSelectedSkillIdChange(e.target.value)}
+              onChange={onSelectedSkillIdChange}
               disabled={isAnalyzing}
-            >
-              {strategyOptions.map((opt) => (
-                <option key={opt.id || 'default'} value={opt.id}>
-                  {opt.name}
-                </option>
-              ))}
-            </select>
+            />
           </label>
         </div>
 
@@ -119,7 +118,7 @@ export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
           <span>本次任务：</span>
           <strong>{selectedItem?.name || query.trim() || '未指定饰品'}</strong>
           <span className="ia-muted">·</span>
-          <span>{activeStrategy.name}</span>
+          <span>{activeStrategyName}</span>
         </div>
 
         <button
@@ -144,7 +143,7 @@ export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
 
       <section className="ia-preset-panel">
         <h3 className="ia-preset-title">预设分析任务</h3>
-        <p className="ia-preset-desc">一键下发任务，Agent 自动完成分析</p>
+        <p className="ia-preset-desc">一键下发任务，已自动选好分析视角，无需手动挑 Skill</p>
         <div className="ia-preset-grid ia-preset-grid-stack">
           {AGENT_PRESET_TASKS.map((task) => (
             <button
@@ -152,10 +151,13 @@ export const IaTaskSidebar: React.FC<IaTaskSidebarProps> = ({
               type="button"
               className="ia-preset-card"
               disabled={isAnalyzing}
-              onClick={() => onPickTask(task.query)}
+              onClick={() => onPickTask(task.query, task.skillId)}
             >
               <span className="ia-preset-card-title">{task.title}</span>
               <span className="ia-preset-card-focus">{task.focus}</span>
+              {task.skillHint ? (
+                <span className="ia-preset-card-skill">视角：{task.skillHint}</span>
+              ) : null}
             </button>
           ))}
         </div>

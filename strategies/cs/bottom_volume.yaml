@@ -1,0 +1,32 @@
+# CS Bottom Volume / 底部放量（饰品）
+
+name: bottom_volume
+display_name: 底部放量
+description: 检测长期下跌后底部放量信号，潜在趋势反转信号。
+category: reversal
+core_rules: [2, 5]
+aliases: [地量见底, 底部放量]
+default_priority: 60
+market_regimes: [trending_down]
+
+instructions: |
+  **CS 底部放量**
+
+  1. **持续下跌**（`recent_daily_bars` ≥30 日 + `trend`）
+     - 自 20 日高点至近期低点跌幅 > 15%。
+     - `trend_status` 偏空或强空。
+
+  2. **量能异动**
+     - 当日 `volume` 明显高于近 5 日均量（约 >3 倍）；宜出现在前期极度缩量之后。
+
+  3. **价格企稳**
+     - 当日收阳；守住近期低点；长下影线显示支撑更佳。
+
+  4. **确认因素**（可选 `event_intel`）
+     - 是否有 Major、版本更新、供给变化等催化；忽略筹码、财报语义。
+
+  5. **风险**
+     - 反转信号风险高于趋势跟踪；仓位宜小；止损严格（近期低点下方）。
+     - 饰品流动性差异大，低流动性标的信号需降级表述。
+
+  评分参考：底部放量确认 +8；配合阳线与事件催化额外 +5。

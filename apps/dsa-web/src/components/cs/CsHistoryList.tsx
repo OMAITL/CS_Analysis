@@ -23,7 +23,7 @@ export const CsHistoryList: React.FC<CsHistoryListProps> = ({
   <div className={`flex min-h-0 flex-col overflow-hidden ${className}`}>
     <DashboardPanelHeader
       title="历史分析"
-      action={items.length > 0 && onClearAll ? (
+      actions={items.length > 0 && onClearAll ? (
         <Button type="button" variant="ghost" size="sm" onClick={onClearAll}>
           清空
         </Button>

@@ -32,7 +32,6 @@ from tenacity import (
     before_sleep_log,
 )
 
-from data_provider.us_index_mapping import is_us_index_code
 from src.config import (
     NEWS_STRATEGY_WINDOWS,
     normalize_news_strategy_profile,
@@ -41,6 +40,16 @@ from src.config import (
 from src.services.cs_item_intel_keywords import build_case_search_query
 
 logger = logging.getLogger(__name__)
+
+_US_INDEX_CODES = frozenset({
+    "SPX", "DJI", "IXIC", "NDX", "RUT", "VIX", "GSPC", "DJIA", "NASDAQ",
+})
+
+
+def _is_us_index_code(code: str) -> bool:
+    normalized = (code or "").strip().upper()
+    return normalized in _US_INDEX_CODES
+
 
 # Transient network errors (retryable)
 _SEARCH_TRANSIENT_EXCEPTIONS = (
@@ -2292,7 +2301,7 @@ class SearchService:
     def _is_us_stock(cls, stock_code: str) -> bool:
         """判断是否为美股/美股指数代码。"""
         code = (stock_code or "").strip().upper()
-        return bool(cls._US_STOCK_RE.match(code) or is_us_index_code(code))
+        return bool(cls._US_STOCK_RE.match(code) or _is_us_index_code(code))
 
     @classmethod
     def _should_prefer_chinese_news(
@@ -2399,7 +2408,7 @@ class SearchService:
         if code.isdigit() and len(code) == 6 and code.startswith(SearchService._A_ETF_PREFIXES):
             return True
         # US index (SPX, DJI, IXIC etc.)
-        if is_us_index_code(code):
+        if _is_us_index_code(code):
             return True
         # US/HK ETF: foreign symbol + name contains fund-like keywords
         if SearchService._is_foreign_stock(code):

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { csApi } from '../api/cs';
 import { getParsedApiError, type ParsedApiError } from '../api/error';
 import type { CsHomeHistoryItem } from '../types/csHome';
-import type { CsGoodIdItem } from '../types/cs';
+import type { CsGoodIdItem, CsItemAnalyzeResponse } from '../types/cs';
 
 const STORAGE_KEY = 'dsa_cs_home_history_v1';
 const MAX_HISTORY = 30;
@@ -104,7 +104,7 @@ export function useCsHomeState() {
     setResult(null);
   }, []);
 
-  const submitAnalysis = useCallback(async (overrideQuery?: string) => {
+  const submitAnalysis = useCallback(async (overrideQuery?: string, overrideSkillId?: string) => {
     const searchText = (overrideQuery ?? query).trim();
     if (!searchText) {
       setInputError('请输入饰品名称');
@@ -154,6 +154,8 @@ export function useCsHomeState() {
     setError(null);
     setIsAnalyzing(true);
 
+    const skillToUse = overrideSkillId ?? selectedSkillId;
+
     try {
       const response = await csApi.analyze({
         goodId,
@@ -161,7 +163,7 @@ export function useCsHomeState() {
         preferCrawl: true,
         refreshCrawl,
         includeReport: true,
-        skills: selectedSkillId ? [selectedSkillId] : undefined,
+        skills: skillToUse ? [skillToUse] : undefined,
       });
       const entry = buildHistoryEntry(response);
       setHistoryItems((prev) => [entry, ...prev.filter((h) => h.goodId !== response.goodId)].slice(0, MAX_HISTORY));

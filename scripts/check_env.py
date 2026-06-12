@@ -181,37 +181,25 @@ def view_database():
 
 
 def check_data_fetch(stock_code: str = "600519"):
-    """测试数据获取"""
-    print_header("3. 数据获取测试")
-    
-    from data_provider import DataFetcherManager
-    
-    manager = DataFetcherManager()
-    
-    print_section("数据源列表")
-    for i, name in enumerate(manager.available_fetchers, 1):
-        print(f"  {i}. {name}")
-    
-    print_section(f"获取 {stock_code} 数据")
-    print(f"  正在获取（可能需要几秒钟）...")
-    
-    try:
-        df, source = manager.get_daily_data(stock_code, days=5)
-        
-        print(f"  ✓ 获取成功")
-        print(f"    数据源: {source}")
-        print(f"    记录数: {len(df)}")
-        
-        print_section("数据预览（最近5条）")
-        if not df.empty:
-            preview_cols = ['date', 'open', 'high', 'low', 'close', 'pct_chg', 'volume']
-            existing_cols = [c for c in preview_cols if c in df.columns]
-            print(df[existing_cols].tail().to_string(index=False))
-        
+    """测试 CSQAQ 行情连通性（股票数据源已移除）。"""
+    print_header("3. CS 行情连通性测试")
+    _ = stock_code
+
+    token = os.getenv("CSQAQ_API_TOKEN", "").strip()
+    if not token:
+        print("  ⚠ 未配置 CSQAQ_API_TOKEN，跳过行情测试")
         return True
-        
+
+    print_section("CSQAQ API")
+    try:
+        from market_provider.csqaq.client import CSQAQClient
+
+        client = CSQAQClient()
+        items = client.search_items("AK-47", limit=1)
+        print(f"  ✓ CSQAQ 搜索可用，样例结果数: {len(items or [])}")
+        return True
     except Exception as e:
-        print(f"  ✗ 获取失败: {e}")
+        print(f"  ✗ CSQAQ 测试失败: {e}")
         return False
 
 

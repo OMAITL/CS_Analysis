@@ -114,6 +114,32 @@ class CSAlertNotificationTestCase(unittest.TestCase):
         self.assertIn("格洛克18型", body)
         self.assertIn("止盈", body)
         self.assertIn("799.9", body)
+        self.assertNotIn("相关持仓", body)
+
+    def test_build_alert_markdown_dedupes_related_holdings(self) -> None:
+        duplicate_rows = [
+            {"good_id": 7369, "platform": "yyyp", "item_name": "摩托手套（★） | 清凉薄荷 (久经沙场)", "pnl_pct": -2.68},
+            {"good_id": 7369, "platform": "yyyp", "item_name": "摩托手套（★） | 清凉薄荷 (久经沙场)", "pnl_pct": -3.1},
+            {"good_id": 1239, "platform": "yyyp", "item_name": "M4A1消音版 | 闪回 (久经沙场)", "pnl_pct": -95.28},
+        ]
+        items = [
+            AlertNotificationItem(
+                display_target="全部 CS 持仓",
+                effective_target="cs_holdings:all",
+                rule_name="CS 自动止损监控",
+                alert_type="cs_stop_loss",
+                target_scope="cs_holdings",
+                reason="stop-loss near",
+                action_label="止损监控",
+                diagnostics={"top_items": duplicate_rows},
+                is_cs=True,
+            )
+        ]
+        body = build_alert_markdown(items)
+        self.assertIn("清凉薄荷", body)
+        self.assertIn("2 笔", body)
+        self.assertIn("M4A1消音版", body)
+        self.assertEqual(body.count("清凉薄荷"), 1)
 
     def test_send_batched_alert_notification_passes_subject(self) -> None:
         rule = CSHoldingsAlert(

@@ -1,7 +1,6 @@
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Activity, Check, ChevronDown, Copy } from 'lucide-react';
-import { historyApi } from '../../api/history';
 import type {
   ReportLanguage,
   RunDiagnosticComponent,
@@ -150,31 +149,12 @@ export const ReportDiagnostics: React.FC<ReportDiagnosticsProps> = ({
     if (summary || !recordId) {
       return undefined;
     }
-
-    let active = true;
-    void historyApi.getDiagnostics(recordId)
-      .then((result) => {
-        if (active) {
-          setFetchState({
-            recordId,
-            summary: result,
-            failed: false,
-          });
-        }
-      })
-      .catch(() => {
-        if (active) {
-          setFetchState({
-            recordId,
-            summary: null,
-            failed: true,
-          });
-        }
-      });
-
-    return () => {
-      active = false;
-    };
+    setFetchState({
+      recordId,
+      summary: null,
+      failed: true,
+    });
+    return undefined;
   }, [recordId, summary]);
 
   useEffect(() => () => {

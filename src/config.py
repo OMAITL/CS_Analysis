@@ -2126,7 +2126,8 @@ class Config:
         Stock codes are canonicalized via normalize_stock_code so that
         runtime routing matches the same equivalence used in validation.
         """
-        from data_provider.base import normalize_stock_code
+        def _normalize_stock_code(stock_code: str) -> str:
+            return (stock_code or "").strip().upper()
 
         groups: dict = {}
         stock_re = re.compile(r'^STOCK_GROUP_(\d+)$', re.IGNORECASE)
@@ -2137,7 +2138,7 @@ class Config:
                 idx = int(m.group(1))
                 val = os.environ[key].strip()
                 groups.setdefault(idx, {})['stocks'] = [
-                    normalize_stock_code(c.strip())
+                    _normalize_stock_code(c.strip())
                     for c in val.split(',') if c.strip()
                 ]
             m = email_re.match(key)
@@ -2490,9 +2491,11 @@ class Config:
                 field="STOCK_LIST",
             ))
         elif self.stock_email_groups:
-            from data_provider.base import normalize_stock_code
+            def _normalize_stock_code(stock_code: str) -> str:
+                return (stock_code or "").strip().upper()
+
             configured_stock_set = {
-                normalize_stock_code(code)
+                _normalize_stock_code(code)
                 for code in self.stock_list
                 if (code or "").strip()
             }
@@ -2502,7 +2505,7 @@ class Config:
                     raw = (stock or "").strip()
                     if not raw:
                         continue
-                    normalized_stock = normalize_stock_code(stock)
+                    normalized_stock = _normalize_stock_code(stock)
                     if normalized_stock in configured_stock_set:
                         continue
                     if normalized_stock in missing_group_stocks_dict:

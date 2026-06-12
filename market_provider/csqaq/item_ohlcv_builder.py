@@ -22,8 +22,9 @@ from market_provider.csqaq.schemas import (
 
 logger = logging.getLogger(__name__)
 
+from market_provider.csqaq.ohlcv_columns import STANDARD_COLUMNS
+
 KLINE_VOLUME_SOURCE = "kline_chart_all_v"
-STANDARD_COLUMNS = ["date", "open", "high", "low", "close", "volume", "amount", "pct_chg"]
 
 
 def _normalize_date(value) -> str:

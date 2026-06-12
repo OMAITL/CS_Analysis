@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Load stock trading skills for CS item LLM reports (prompt injection only)."""
+"""Load CS trading skills for item LLM reports and Agent prompts (YAML injection)."""
 
 from __future__ import annotations
 
@@ -16,33 +16,46 @@ _ROOT = Path(__file__).resolve().parents[2]
 _CS_SKILLS_DIR = _ROOT / "strategies" / "cs"
 _BUILTIN_SKILLS_DIR = _ROOT / "strategies"
 
-# Pure technical skills reuse stock YAML; event/structure skills use strategies/cs/ overrides.
+# All CS skills live under strategies/cs/ (technical + event/structure).
 CS_TECHNICAL_SKILL_IDS = frozenset(
     {
         "bull_trend",
-        "shrink_pullback",
-        "volume_breakout",
-        "ma_golden_cross",
         "bottom_volume",
         "box_oscillation",
-        "one_yang_three_yin",
+        "dragon_head",
     }
 )
 
 CS_ADAPTED_SKILL_IDS = frozenset(
     {
-        "chan_theory",
-        "wave_theory",
         "emotion_cycle",
-        "dragon_head",
         "event_driven",
-        "hot_theme",
     }
 )
 
-CS_ALLOWED_SKILL_IDS = CS_TECHNICAL_SKILL_IDS | CS_ADAPTED_SKILL_IDS
+# CS-only skills: no stock counterpart; semantics tied to platforms, cases, Major, liquidity.
+CS_NATIVE_SKILL_IDS = frozenset(
+    {
+        "platform_arbitrage",
+        "major_sticker_cycle",
+        "case_supply_chain",
+        "liquidity_gate",
+        "manipulation_radar",
+    }
+)
+
+CS_ALLOWED_SKILL_IDS = CS_TECHNICAL_SKILL_IDS | CS_ADAPTED_SKILL_IDS | CS_NATIVE_SKILL_IDS
 
 CS_DEFAULT_SKILL_IDS: tuple[str, ...] = ("bull_trend",)
+
+# Curated for Web skill picker — covers trend, events, platforms, liquidity, manipulation.
+CS_RECOMMENDED_SKILL_IDS: tuple[str, ...] = (
+    "bull_trend",
+    "event_driven",
+    "platform_arbitrage",
+    "liquidity_gate",
+    "manipulation_radar",
+)
 
 CS_SKILL_DATA_MAPPING = """## CS 技能与 Agent 工具映射（必须遵守）
 - `search_cs_item`：按饰品名搜索 good_id；多磨损档时须确认后再分析
@@ -62,6 +75,7 @@ CS_TRADING_BASELINE_ZH = """## CS 饰品交易基线（与激活技能同时生�
 5. **风险**：数据质量非 full、量能可疑、或事件情报为空时，必须在结论中说明不确定性。"""
 
 _CATEGORY_LABELS: Dict[str, str] = {
+    "cs_native": "饰品专属",
     "trend": "趋势",
     "pattern": "形态",
     "reversal": "反转",
@@ -114,7 +128,7 @@ def build_cs_skill_instructions(skill_ids: Sequence[str]) -> str:
         return ""
 
     parts: List[str] = []
-    for category in ("trend", "pattern", "reversal", "framework"):
+    for category in ("cs_native", "trend", "pattern", "reversal", "framework"):
         skills = grouped.get(category) or []
         if not skills:
             continue
@@ -149,11 +163,25 @@ def list_cs_skills() -> List[Dict[str, str]]:
                 "display_name": skill.display_name,
                 "description": skill.description,
                 "category": skill.category or "trend",
-                "source": "cs" if (_CS_SKILLS_DIR / f"{skill_id}.yaml").is_file() else "stock",
+                "source": (
+                    "cs_native"
+                    if skill_id in CS_NATIVE_SKILL_IDS
+                    else ("cs" if (_CS_SKILLS_DIR / f"{skill_id}.yaml").is_file() else "stock")
+                ),
             }
         )
     rows.sort(key=lambda row: (row["category"], row["display_name"]))
     return rows
+
+
+def list_cs_skills_catalog() -> Dict[str, Any]:
+    """Skills metadata plus picker hints for Web/API."""
+    return {
+        "skills": list_cs_skills(),
+        "default": list(CS_DEFAULT_SKILL_IDS),
+        "recommended": list(CS_RECOMMENDED_SKILL_IDS),
+        "category_labels": dict(_CATEGORY_LABELS),
+    }
 
 
 def _safe_float(value: Any) -> Optional[float]:

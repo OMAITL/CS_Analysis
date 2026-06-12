@@ -6,7 +6,7 @@ from __future__ import annotations
 import logging
 from typing import List, Optional
 
-from src.agent.factory import _coerce_config_int
+from src.agent.config_utils import coerce_config_int
 from src.config import AGENT_MAX_STEPS_DEFAULT
 
 logger = logging.getLogger(__name__)
@@ -55,12 +55,12 @@ def build_cs_agent_executor(config=None, skills: Optional[List[str]] = None):
         skill_instructions=skill_state.skill_instructions,
         data_mapping=CS_SKILL_DATA_MAPPING,
         baseline=CS_TRADING_BASELINE_ZH,
-        max_steps=_coerce_config_int(
+        max_steps=coerce_config_int(
             getattr(config, "agent_max_steps", AGENT_MAX_STEPS_DEFAULT),
             AGENT_MAX_STEPS_DEFAULT,
             field_name="agent_max_steps",
         ),
-        timeout_seconds=_coerce_config_int(
+        timeout_seconds=coerce_config_int(
             getattr(config, "agent_orchestrator_timeout_s", 0),
             0,
             field_name="agent_orchestrator_timeout_s",

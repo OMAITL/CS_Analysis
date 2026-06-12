@@ -329,7 +329,7 @@ class SkillManager:
         # Or register programmatically
         manager.register(some_skill)
         # Activate and generate prompt
-        manager.activate(["dragon_head", "shrink_pullback"])
+        manager.activate(["dragon_head", "bull_trend"])
         instructions = manager.get_skill_instructions()
     """
 

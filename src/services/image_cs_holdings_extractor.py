@@ -12,7 +12,7 @@ import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.services.cs_holdings_dedup import reconcile_item_name_and_wear
-from src.services.image_stock_extractor import (
+from src.services.image_vision_utils import (
     ALLOWED_MIME,
     MAX_SIZE_BYTES,
     _call_litellm_vision,

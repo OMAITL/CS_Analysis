@@ -41,7 +41,7 @@ from src.config import (
 from src.llm.generation_params import apply_litellm_generation_params
 from src.llm.errors import call_litellm_with_param_recovery
 from src.storage import persist_llm_usage
-from src.data.stock_mapping import STOCK_NAME_MAP
+STOCK_NAME_MAP: dict = {}
 from src.report_language import (
     get_signal_level,
     get_no_data_text,
@@ -1333,25 +1333,7 @@ def get_stock_name_multi_source(
     if stock_code in STOCK_NAME_MAP:
         return STOCK_NAME_MAP[stock_code]
 
-    # 3. 从数据源获取
-    if data_manager is None:
-        try:
-            from data_provider.base import DataFetcherManager
-            data_manager = DataFetcherManager()
-        except Exception as e:
-            logger.debug(f"无法初始化 DataFetcherManager: {e}")
-
-    if data_manager:
-        try:
-            name = data_manager.get_stock_name(stock_code)
-            if name:
-                # 更新缓存
-                STOCK_NAME_MAP[stock_code] = name
-                return name
-        except Exception as e:
-            logger.debug(f"从数据源获取股票名称失败: {e}")
-
-    # 4. 返回默认名称
+    # 3. 返回默认名称
     return f'股票{stock_code}'
 
 
@@ -1904,16 +1886,10 @@ class GeminiAnalyzer:
 
         resolved_state = getattr(self, "_resolved_prompt_state", None)
         if resolved_state is None:
-            from src.agent.factory import resolve_skill_prompt_state
-
-            prompt_state = resolve_skill_prompt_state(
-                self._get_runtime_config(),
-                skills=getattr(self, "_requested_skills", None),
-            )
             resolved_state = {
-                "skill_instructions": prompt_state.skill_instructions,
-                "default_skill_policy": prompt_state.default_skill_policy,
-                "use_legacy_default_prompt": bool(getattr(prompt_state, "use_legacy_default_prompt", False)),
+                "skill_instructions": "",
+                "default_skill_policy": "",
+                "use_legacy_default_prompt": False,
             }
             self._resolved_prompt_state = resolved_state
 

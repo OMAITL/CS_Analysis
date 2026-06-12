@@ -11,6 +11,8 @@ import '../styles/ia-v2.css';
 const HomePage: React.FC = () => {
   const [historyOpen, setHistoryOpen] = useState(false);
   const [csSkills, setCsSkills] = useState<CsSkillInfo[]>([]);
+  const [recommendedSkillIds, setRecommendedSkillIds] = useState<string[]>([]);
+  const [skillCategoryLabels, setSkillCategoryLabels] = useState<Record<string, string>>({});
 
   const {
     query,
@@ -49,6 +51,8 @@ const HomePage: React.FC = () => {
       .then((response) => {
         if (active) {
           setCsSkills(response.skills);
+          setRecommendedSkillIds(response.recommended);
+          setSkillCategoryLabels(response.categoryLabels);
         }
       })
       .catch(() => {
@@ -66,12 +70,15 @@ const HomePage: React.FC = () => {
   }, [submitAnalysis]);
 
   const handlePickTask = useCallback(
-    (text: string) => {
+    (text: string, skillId?: string) => {
       setQuery(text);
       setSelectedItem(null);
-      void submitAnalysis(text);
+      if (skillId) {
+        setSelectedSkillId(skillId);
+      }
+      void submitAnalysis(text, skillId);
     },
-    [setQuery, setSelectedItem, submitAnalysis],
+    [setQuery, setSelectedItem, setSelectedSkillId, submitAnalysis],
   );
 
   const handleSelectHistory = useCallback(
@@ -127,6 +134,8 @@ const HomePage: React.FC = () => {
             selectedSkillId={selectedSkillId}
             onSelectedSkillIdChange={setSelectedSkillId}
             csSkills={csSkills}
+            recommendedSkillIds={recommendedSkillIds}
+            categoryLabels={skillCategoryLabels}
             isAnalyzing={isAnalyzing}
             inputError={Boolean(inputError)}
             onSubmit={() => void handleSubmit()}

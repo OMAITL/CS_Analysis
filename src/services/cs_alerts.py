@@ -5,13 +5,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import date
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from market_provider.csqaq.client import CSQAQClient
 from market_provider.csqaq.item_analysis import fetch_item_snapshot
 from src.services.cs_holdings_risk_service import CSHoldingsRiskService
 from src.services.cs_holdings_service import CSHoldingsService, _pick_market_price
-from src.services.portfolio_alerts import RuntimeAlertPayload
+from src.services.alert_runtime import RuntimeAlertPayload
 
 
 CS_HOLDINGS_TARGET_SCOPES = frozenset({"cs_holdings", "cs_item"})
@@ -24,6 +24,71 @@ CS_HOLDINGS_ALERT_TYPES = frozenset({
 })
 CS_VALID_PLATFORMS = frozenset({"all", "yyyp", "buff", "steam"})
 EXPANDED_CS_ITEM_SOFT_CAP = 100
+
+
+def _safe_float(value: Any) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def dedupe_cs_holding_top_items(
+    rows: Sequence[Any],
+    *,
+    limit: int = 5,
+) -> List[Dict[str, Any]]:
+    """Merge duplicate good_id/platform rows (multiple lots) for alert display."""
+    buckets: Dict[Tuple[int, str], Dict[str, Any]] = {}
+    order: List[Tuple[int, str]] = []
+    for raw in rows:
+        if not isinstance(raw, dict):
+            continue
+        good_id = raw.get("good_id")
+        if good_id is None:
+            continue
+        try:
+            gid = int(good_id)
+        except (TypeError, ValueError):
+            continue
+        platform = str(raw.get("platform") or "yyyp").lower()
+        key = (gid, platform)
+        item_name = str(raw.get("item_name") or gid).strip() or str(gid)
+        if key not in buckets:
+            buckets[key] = {
+                **raw,
+                "good_id": gid,
+                "platform": platform,
+                "item_name": item_name,
+                "lot_count": 1,
+            }
+            order.append(key)
+            continue
+        bucket = buckets[key]
+        bucket["lot_count"] = int(bucket.get("lot_count") or 1) + 1
+        if len(item_name) > len(str(bucket.get("item_name") or "")):
+            bucket["item_name"] = item_name
+        new_pnl = _safe_float(raw.get("pnl_pct"))
+        old_pnl = _safe_float(bucket.get("pnl_pct"))
+        if new_pnl is not None and (old_pnl is None or new_pnl < old_pnl):
+            bucket["pnl_pct"] = new_pnl
+        new_loss = _safe_float(raw.get("loss_pct"))
+        old_loss = _safe_float(bucket.get("loss_pct"))
+        if new_loss is not None and (old_loss is None or new_loss > old_loss):
+            bucket["loss_pct"] = new_loss
+
+    output: List[Dict[str, Any]] = []
+    for key in order:
+        row = dict(buckets[key])
+        lot_count = int(row.pop("lot_count", 1) or 1)
+        if lot_count > 1:
+            row["item_name"] = f"{row['item_name']}（{lot_count} 笔）"
+        output.append(row)
+        if len(output) >= max(1, int(limit)):
+            break
+    return output
 
 
 @dataclass
@@ -380,7 +445,7 @@ def _evaluate_pnl_threshold(
         threshold=threshold,
         message=message,
         data_source="cs_holdings_snapshot",
-        diagnostics={"direction": direction, "affected_count": len(affected), "top_items": affected[:5]},
+        diagnostics={"direction": direction, "affected_count": len(affected), "top_items": dedupe_cs_holding_top_items(affected, limit=5)},
     )
 
 
@@ -401,7 +466,7 @@ def _evaluate_price_stale(rule: CSHoldingsAlert, report: Dict[str, Any]) -> Dict
         threshold=0.0,
         message=message,
         data_source="cs_holdings_risk",
-        diagnostics={"affected_count": len(affected), "top_items": affected[:5]},
+        diagnostics={"affected_count": len(affected), "top_items": dedupe_cs_holding_top_items(affected, limit=5)},
         data_timestamp=_parse_date(report.get("as_of")),
     )
 
@@ -441,7 +506,7 @@ def _evaluate_stop_loss(rule: CSHoldingsAlert, report: Dict[str, Any]) -> Dict[s
             "mode": mode,
             "near_count": stop_loss.get("near_count", 0),
             "triggered_count": stop_loss.get("triggered_count", 0),
-            "top_items": affected[:5],
+            "top_items": dedupe_cs_holding_top_items(affected, limit=5),
         },
         data_timestamp=_parse_date(report.get("as_of")),
     )

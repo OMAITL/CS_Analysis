@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from src.notification import NotificationDispatchResult
     from src.services.alert_worker import RuntimeAlertRule
 
+from src.services.cs_alerts import dedupe_cs_holding_top_items
+
 logger = logging.getLogger(__name__)
 
 CS_ALERT_TYPES = frozenset({
@@ -95,13 +97,47 @@ def _lookup_holding_by_good_id(good_id: int, platform: Optional[str]) -> Optiona
 
         snapshot = CSHoldingsService().get_snapshot(refresh_prices=False)
         plat = (platform or "").strip().lower()
+        matched: List[Dict[str, Any]] = []
         for row in snapshot.get("items") or []:
             if int(row.get("good_id") or 0) != good_id:
                 continue
             row_plat = str(row.get("platform") or "yyyp").lower()
             if plat and plat not in {"all", row_plat}:
                 continue
-            return row
+            matched.append(row)
+        if not matched:
+            return None
+        if len(matched) == 1:
+            return matched[0]
+
+        total_qty = 0
+        cost_sum = 0.0
+        market_price: Optional[float] = None
+        item_name = str(matched[0].get("item_name") or good_id)
+        for row in matched:
+            qty = max(1, int(row.get("quantity") or 1))
+            purchase = _safe_float(row.get("purchase_price"))
+            if purchase is not None and purchase > 0:
+                cost_sum += purchase * qty
+                total_qty += qty
+            mp = _safe_float(row.get("market_price"))
+            if mp is not None:
+                market_price = mp
+            name = str(row.get("item_name") or "")
+            if len(name) > len(item_name):
+                item_name = name
+
+        avg_cost = (cost_sum / total_qty) if total_qty > 0 else None
+        pnl_pct: Optional[float] = None
+        if avg_cost and avg_cost > 0 and market_price is not None:
+            pnl_pct = (market_price - avg_cost) / avg_cost * 100.0
+        return {
+            "item_name": item_name,
+            "purchase_price": avg_cost,
+            "pnl_pct": pnl_pct,
+            "market_price": market_price,
+            "lot_count": len(matched),
+        }
     except Exception as exc:
         logger.debug("CS alert holding lookup failed good_id=%s: %s", good_id, exc)
     return None
@@ -177,39 +213,117 @@ def _format_pct(value: Optional[float]) -> str:
     return f"{value:+.2f}%"
 
 
+def _escape_md_cell(value: Any) -> str:
+    text = str(value if value not in (None, "") else "—")
+    return text.replace("|", "\\|").replace("\n", " ").strip()
+
+
+def _display_item_label(item: AlertNotificationItem) -> str:
+    return item.item_name or item.display_target.replace("饰品 ", "", 1)
+
+
+def _collect_related_holdings(item: AlertNotificationItem) -> List[Dict[str, Any]]:
+    if item.target_scope == "cs_item":
+        return []
+    raw = item.diagnostics.get("top_items") or item.diagnostics.get("top_positions") or []
+    if not isinstance(raw, list):
+        return []
+    return dedupe_cs_holding_top_items(raw, limit=8)
+
+
+def _render_overview_table(items: Sequence[AlertNotificationItem]) -> List[str]:
+    if not items:
+        return []
+    lines = [
+        "## 预警概览",
+        "",
+        "| # | 饰品 | 类型 | 现价 | 阈值 | 盈亏 |",
+        "| ---: | --- | --- | ---: | ---: | ---: |",
+    ]
+    for index, item in enumerate(items, start=1):
+        if not item.is_cs:
+            continue
+        lines.append(
+            "| {idx} | {name} | {action} | {price} | {threshold} | {pnl} |".format(
+                idx=index,
+                name=_escape_md_cell(_display_item_label(item)),
+                action=_escape_md_cell(item.action_label or "—"),
+                price=_escape_md_cell(_format_money(item.observed_value)),
+                threshold=_escape_md_cell(_format_money(item.threshold)),
+                pnl=_escape_md_cell(_format_pct(item.pnl_pct)),
+            )
+        )
+    lines.append("")
+    return lines
+
+
+def _render_detail_table(rows: List[tuple[str, str]]) -> List[str]:
+    if not rows:
+        return []
+    lines = [
+        "| 项目 | 内容 |",
+        "| --- | --- |",
+    ]
+    for label, value in rows:
+        lines.append(f"| {_escape_md_cell(label)} | {_escape_md_cell(value)} |")
+    lines.append("")
+    return lines
+
+
+def _render_related_holdings_table(rows: List[Dict[str, Any]]) -> List[str]:
+    if not rows:
+        return []
+    lines = [
+        "**相关持仓**",
+        "",
+        "| 饰品 | 盈亏 |",
+        "| --- | ---: |",
+    ]
+    for row in rows:
+        name = row.get("item_name") or row.get("good_id") or "?"
+        pnl = row.get("pnl_pct")
+        if pnl is None:
+            loss = _safe_float(row.get("loss_pct"))
+            pnl_text = f"-{loss:.2f}%" if loss is not None else "—"
+        else:
+            pnl_text = _format_pct(float(pnl))
+        lines.append(f"| {_escape_md_cell(name)} | {_escape_md_cell(pnl_text)} |")
+    lines.append("")
+    return lines
+
+
 def _render_cs_item_section(item: AlertNotificationItem, index: int) -> List[str]:
     scope_label = "单品" if item.target_scope == "cs_item" else "全仓"
+    title = _display_item_label(item)
+    action = item.action_label or "预警"
     lines = [
-        f"### {index}. {item.item_name or item.display_target}",
+        f"### {index}. {title} · {action}",
         "",
-        f"- **范围**：{scope_label}",
     ]
+
+    detail_rows: List[tuple[str, str]] = [("范围", scope_label)]
     if item.action_label:
-        lines.append(f"- **类型**：{item.action_label}")
+        detail_rows.append(("类型", item.action_label))
     if item.rule_name:
-        lines.append(f"- **规则**：{item.rule_name}")
+        detail_rows.append(("规则", item.rule_name))
     if item.platform:
-        lines.append(f"- **平台**：{item.platform}")
+        detail_rows.append(("平台", item.platform))
     if item.observed_value is not None:
-        lines.append(f"- **现价/观测值**：{_format_money(item.observed_value)}")
+        detail_rows.append(("现价", _format_money(item.observed_value)))
     if item.threshold is not None:
-        lines.append(f"- **目标/阈值**：{_format_money(item.threshold)}")
+        detail_rows.append(("阈值", _format_money(item.threshold)))
     if item.cost_price is not None:
-        lines.append(f"- **成本价**：{_format_money(item.cost_price)}")
+        detail_rows.append(("成本价", _format_money(item.cost_price)))
     if item.pnl_pct is not None:
-        lines.append(f"- **持仓盈亏**：{_format_pct(item.pnl_pct)}")
+        detail_rows.append(("持仓盈亏", _format_pct(item.pnl_pct)))
     if item.data_source:
-        lines.append(f"- **数据来源**：{item.data_source}")
-    lines.append(f"- **说明**：{item.reason}")
-    if item.diagnostics.get("top_items"):
-        top = item.diagnostics.get("top_items") or []
-        if isinstance(top, list) and top:
-            lines.append("- **相关持仓**：")
-            for row in top[:5]:
-                if isinstance(row, dict):
-                    name = row.get("item_name") or row.get("good_id") or "?"
-                    lines.append(f"  - {name}")
-    lines.append("")
+        detail_rows.append(("数据来源", str(item.data_source)))
+    detail_rows.append(("说明", item.reason))
+    lines.extend(_render_detail_table(detail_rows))
+
+    related = _collect_related_holdings(item)
+    if related:
+        lines.extend(_render_related_holdings_table(related))
     return lines
 
 
@@ -244,6 +358,10 @@ def build_alert_markdown(
     if ai_summary:
         lines.extend(["## AI 解读", "", ai_summary.strip(), ""])
 
+    cs_items = [item for item in items if item.is_cs]
+    if len(cs_items) > 1:
+        lines.extend(_render_overview_table(cs_items))
+
     lines.extend(["## 触发明细", ""])
     for index, item in enumerate(items, start=1):
         if item.is_cs:
@@ -261,10 +379,17 @@ def build_alert_markdown(
 
 def _build_alert_ai_prompt(items: Sequence[AlertNotificationItem]) -> str:
     payload = []
+    seen: set[tuple[str, str]] = set()
     for item in items:
+        label = _display_item_label(item)
+        action = item.action_label or ""
+        key = (label, action)
+        if key in seen:
+            continue
+        seen.add(key)
         payload.append({
             "display_target": item.display_target,
-            "item_name": item.item_name,
+            "item_name": label,
             "alert_type": item.alert_type,
             "action_label": item.action_label,
             "observed_value": item.observed_value,

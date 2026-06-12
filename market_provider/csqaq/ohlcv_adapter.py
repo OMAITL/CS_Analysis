@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
-from data_provider.base import STANDARD_COLUMNS
+from market_provider.csqaq.ohlcv_columns import STANDARD_COLUMNS
 from market_provider.csqaq.schemas import (
     CSQAQChartSeries,
     CSQAQPlatform,

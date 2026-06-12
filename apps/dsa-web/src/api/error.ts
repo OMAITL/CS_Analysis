@@ -12,6 +12,7 @@ export type ApiErrorCategory =
   | 'upstream_llm_400'
   | 'upstream_timeout'
   | 'upstream_network'
+  | 'upstream_auth'
   | 'local_connection_failed'
   | 'http_error'
   | 'unknown';
@@ -28,6 +29,9 @@ type ResponseLike = {
   status?: number;
   data?: unknown;
   statusText?: string;
+  config?: {
+    url?: string;
+  };
 };
 
 type ErrorCarrier = {
@@ -495,7 +499,7 @@ export function parseApiError(error: unknown): ParsedApiError {
       !payloadText
       && (
         includesAny(matchText, ['internal server error'])
-        || includesAny([String(response?.statusText || '')], ['internal server error'])
+        || includesAny(String(response?.statusText || ''), ['internal server error'])
       )
     )
   ) && (requestUrl.includes('/api/') || includesAny(matchText, ['proxy error']))

@@ -122,12 +122,7 @@ def _normalize_tool_stock_code(value: Any) -> Any:
     if text.isdigit() and len(text) == 5:
         return f"HK{text}"
 
-    try:
-        from data_provider.base import canonical_stock_code, normalize_stock_code
-
-        return canonical_stock_code(normalize_stock_code(text))
-    except Exception:
-        return text
+    return text
 
 
 def _build_tool_cache_key(tool_name: str, arguments: Dict[str, Any]) -> Optional[str]:

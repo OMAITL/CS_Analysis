@@ -46,7 +46,6 @@ from src.report_language import (
     localize_trend_prediction,
     normalize_report_language,
 )
-from bot.models import BotMessage
 from src.utils.sanitize import sanitize_diagnostic_text
 from src.utils.data_processing import normalize_model_used
 from src.notification_sender import (
@@ -197,7 +196,7 @@ class NotificationService(
     注意：所有已配置的渠道都会收到推送
     """
     
-    def __init__(self, source_message: Optional[BotMessage] = None):
+    def __init__(self, source_message: Optional[Any] = None):
         """
         初始化通知服务
         
@@ -508,7 +507,7 @@ class NotificationService(
 
     def _extract_dingtalk_session_webhook(self) -> Optional[str]:
         """从来源消息中提取钉钉会话 Webhook（用于 Stream 模式回复）"""
-        if not isinstance(self._source_message, BotMessage):
+        if self._source_message is None:
             return None
         raw_data = getattr(self._source_message, "raw_data", {}) or {}
         if not isinstance(raw_data, dict):
@@ -530,7 +529,7 @@ class NotificationService(
         Returns:
             包含 chat_id 的字典，或 None
         """
-        if not isinstance(self._source_message, BotMessage):
+        if self._source_message is None:
             return None
         if getattr(self._source_message, "platform", "") != "feishu":
             return None
@@ -594,7 +593,11 @@ class NotificationService(
             是否发送成功
         """
         try:
-            from bot.platforms.feishu_stream import FeishuReplyClient, FEISHU_SDK_AVAILABLE
+            from bot.platforms.feishu_stream import FeishuReplyClient, FEISHU_SDK_AVAILABLE  # type: ignore
+        except ImportError:
+            logger.debug("飞书 Stream 回复模块不可用（bot 已移除）")
+            return False
+        try:
             if not FEISHU_SDK_AVAILABLE:
                 logger.warning("飞书 SDK 不可用，无法发送 Stream 回复")
                 return False

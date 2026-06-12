@@ -5,15 +5,11 @@
 ===================================
 
 职责：
-1. 导出所有 Repository 类
+1. 导出 Repository 类（按子模块直接导入）
 """
 
-from src.repositories.analysis_repo import AnalysisRepository
-from src.repositories.backtest_repo import BacktestRepository
-from src.repositories.stock_repo import StockRepository
+from src.repositories.alert_repo import AlertRepository
 
 __all__ = [
-    "AnalysisRepository",
-    "BacktestRepository",
-    "StockRepository",
+    "AlertRepository",
 ]

@@ -52,7 +52,7 @@ from src.services.cs_holdings_import_service import CSHoldingsImportService
 from src.services.cs_holdings_risk_service import CSHoldingsRiskService
 from src.services.cs_item_catalog_service import CSItemCatalogService
 from src.services.cs_item_service import CSItemService
-from src.services.cs_skill_prompt import list_cs_skills
+from src.services.cs_skill_prompt import list_cs_skills_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -271,7 +271,7 @@ def analyze_cs_item(request: CSItemAnalyzeRequest) -> CSItemAnalyzeResponse:
     summary="List CS-compatible trading skills",
 )
 def list_cs_item_skills() -> dict:
-    return {"skills": list_cs_skills(), "default": ["bull_trend"]}
+    return list_cs_skills_catalog()
 
 
 @router.get(

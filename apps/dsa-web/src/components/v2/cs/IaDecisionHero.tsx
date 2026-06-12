@@ -4,10 +4,8 @@ import {
   buildReportFromData,
   formatCsPlatformLabel,
   humanizeAdvice,
-  humanizeTrendLine,
   resolveAdviceTone,
   resolveRiskLevel,
-  splitTrendSignals,
   type AdviceTone,
 } from './iaUtils';
 

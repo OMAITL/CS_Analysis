@@ -7,6 +7,7 @@ import { MessageSquarePlus, Send, Trash2, X } from 'lucide-react';
 import { csApi, type CsChatStreamRequest } from '../api/cs';
 import { ApiErrorAlert, ConfirmDialog } from '../components/common';
 import { useCsChatStore, type CsSessionItemBinding, type ProgressStep } from '../stores/csChatStore';
+import { CsSkillSelector } from '../components/v2/cs/CsSkillSelector';
 import type { CsSkillInfo } from '../types/csHome';
 import type { CsItemAnalyzeResponse } from '../types/cs';
 import { normalizeChatAssistantMarkdown } from '../utils/chatMarkdown';
@@ -15,11 +16,11 @@ import '../styles/ia-v2.css';
 type ChatAnswerScope = 'market' | 'portfolio' | 'single_item' | 'general';
 
 const CS_QUICK_QUESTIONS: Array<{ label: string; skill: string; scope: ChatAnswerScope }> = [
-  { label: '哪些饰品可能有人在做盘？怎么识别？', skill: 'emotion_cycle', scope: 'market' },
+  { label: '哪些饰品可能有人在做盘？怎么识别？', skill: 'manipulation_radar', scope: 'market' },
   { label: '我持有的饰品在高位要不要出货？', skill: 'bull_trend', scope: 'portfolio' },
   { label: 'AK-47 火蛇现在适合入手还是观望？', skill: 'bull_trend', scope: 'general' },
-  { label: '成交量放大但价格横盘，怎么解读？', skill: 'volume_breakout', scope: 'general' },
-  { label: 'BUFF 和悠悠有价差，套利要注意什么？', skill: 'box_oscillation', scope: 'general' },
+  { label: '成交量放大但价格横盘，怎么解读？', skill: 'bull_trend', scope: 'general' },
+  { label: 'BUFF 和悠悠有价差，套利要注意什么？', skill: 'platform_arbitrage', scope: 'general' },
   { label: '最近哪些刀型或手套热度在上升？', skill: 'dragon_head', scope: 'market' },
 ];
 
@@ -106,6 +107,8 @@ const CsChatPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
   const [input, setInput] = useState('');
   const [skills, setSkills] = useState<CsSkillInfo[]>([]);
+  const [recommendedSkillIds, setRecommendedSkillIds] = useState<string[]>([]);
+  const [skillCategoryLabels, setSkillCategoryLabels] = useState<Record<string, string>>({});
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
   const [followUpDismissed, setFollowUpDismissed] = useState(() => readFollowUpDismissed());
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -180,7 +183,11 @@ const CsChatPage: React.FC = () => {
     csApi
       .listSkills()
       .then((res) => {
-        if (active) setSkills(res.skills);
+        if (active) {
+          setSkills(res.skills);
+          setRecommendedSkillIds(res.recommended);
+          setSkillCategoryLabels(res.categoryLabels);
+        }
       })
       .catch(() => {
         if (active) setSkills([]);
@@ -297,14 +304,6 @@ const CsChatPage: React.FC = () => {
       e.preventDefault();
       void handleSend();
     }
-  };
-
-  const toggleSkill = (skillId: string) => {
-    setSelectedSkillIds((prev) => {
-      if (prev.includes(skillId)) return prev.filter((id) => id !== skillId);
-      if (prev.length >= MAX_SELECTED_SKILLS) return prev;
-      return [...prev, skillId];
-    });
   };
 
   const handleClearFollowUp = useCallback(() => {
@@ -501,22 +500,16 @@ const CsChatPage: React.FC = () => {
               {skills.length === 0 ? (
                 <p>加载技能列表中…</p>
               ) : (
-                <div className="flex flex-wrap gap-2">
-                  {skills.map((skill) => {
-                    const selected = selectedSkillIds.includes(skill.id);
-                    return (
-                      <button
-                        key={skill.id}
-                        type="button"
-                        title={skill.description}
-                        className={`ia-chip ${selected ? 'ring-2 ring-[hsl(var(--primary))]' : ''}`}
-                        onClick={() => toggleSkill(skill.id)}
-                      >
-                        {skill.displayName}
-                      </button>
-                    );
-                  })}
-                </div>
+                <CsSkillSelector
+                  variant="chips"
+                  skills={skills}
+                  recommendedIds={recommendedSkillIds}
+                  categoryLabels={skillCategoryLabels}
+                  selectedIds={selectedSkillIds}
+                  onChange={setSelectedSkillIds}
+                  maxSelected={MAX_SELECTED_SKILLS}
+                  disabled={loading}
+                />
               )}
             </div>
           </details>

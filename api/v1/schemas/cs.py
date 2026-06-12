@@ -7,7 +7,17 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from api.v1.schemas.stocks import KLineData
+class KLineData(BaseModel):
+    """K 线数据点（CS 饰品 OHLCV）。"""
+
+    date: str = Field(..., description="日期")
+    open: float = Field(..., description="开盘价")
+    high: float = Field(..., description="最高价")
+    low: float = Field(..., description="最低价")
+    close: float = Field(..., description="收盘价")
+    volume: Optional[float] = Field(None, description="成交量")
+    amount: Optional[float] = Field(None, description="成交额")
+    change_percent: Optional[float] = Field(None, description="涨跌幅 (%)")
 
 
 class CSGoodIdItem(BaseModel):
